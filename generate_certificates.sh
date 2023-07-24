@@ -34,7 +34,7 @@ rm *.csr
 
 echo "Certificates have been generated successfully in the 'certificates' directory."
 
-echo "Verifying certificates"
+echo "Verifying certificates..."
 
 
 openssl verify -CAfile ca.crt client.crt

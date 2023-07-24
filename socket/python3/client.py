@@ -4,7 +4,7 @@ import ssl
 import sys
 import logging
 
-# Constants
+# Constants 
 SERVER_PORT = 12345
 
 # Logging configuration
