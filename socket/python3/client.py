@@ -1,28 +1,23 @@
-import contextlib
 import socket
 import ssl
-import sys
-import logging
 
-# Constants 
-SERVER_PORT = 12345
-
-# Logging configuration
-logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(message)s')
-
-
-def create_client_socket(server_ip):
+def create_client_socket(server_ip, server_port):
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-    server_address = (server_ip, SERVER_PORT)
+    server_address = (server_ip, server_port)
 
     client_socket.connect(server_address)
 
     return client_socket
 
+def send_message(ssl_socket, message):
+    ssl_socket.sendall(message.encode())
 
-def main(server_ip):
-    client_socket = create_client_socket(server_ip)
+def receive_response(ssl_socket):
+    return ssl_socket.recv(1024).decode()
+
+def main(server_ip, server_port, cert_path, message):
+    client_socket = create_client_socket(server_ip, server_port)
     ssl_socket = None
 
     try:
@@ -40,33 +35,17 @@ def main(server_ip):
         # Wrap the socket in an SSL socket
         ssl_socket = context.wrap_socket(client_socket, server_hostname="server")
 
-        # Send a message to the server
-        ssl_socket.sendall(b"Hello, server! This is the client.")
-
-        # Receive the response from the server
-        response = ssl_socket.recv(1024)
-        logging.info(f"Received from server: {response.decode()}")
+        send_message(ssl_socket, message)
+        response = receive_response(ssl_socket)
+        print(f"Received from server: {response}")
 
     except ssl.SSLError as e:
-        logging.error("SSL error:", exc_info=True)
+        print("SSL error:", e)
 
-    except ConnectionRefusedError:
-        logging.error("Connection refused: Please check if the server is running and reachable.")
-
-    except Exception:
-        logging.error("Error connecting to server:", exc_info=True)
+    except Exception as e:
+        print("Error connecting to server:", e)
 
     finally:
         if ssl_socket:
-            with contextlib.suppress(socket.error):
-                ssl_socket.shutdown(socket.SHUT_RDWR)
             ssl_socket.close()
-            logging.info("SSL socket closed.")
         client_socket.close()
-
-
-if __name__ == '__main__':
-    cert_path = '../../certificates/'  # Change this to the actual path of your certificates
-    server_ip = sys.argv[1] if len(
-        sys.argv) > 1 else '127.0.0.1'  # Get the server IP from command line or use 'your_server_ip'
-    main(server_ip)
