@@ -1,146 +1,69 @@
-import contextlib
-import socket
 import ssl
-import logging
-from datetime import datetime
-
-# Constants
-SERVER_PORT = 12345
-CERT_PATH = '../../certificates/'  # Change this to the actual path of your certificates
+import socket
+from verification_tools import *
 
 # Logging configuration
-logging.basicConfig(filename='authServer.log', encoding='utf-8', level=logging.INFO)
-logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(message)s')
+logging.basicConfig(filename='authServer.log', encoding='utf-8', level=logging.INFO, format='[%(asctime)s] %(message)s')
 
-# Custom exceptions for certificate verification
-class CertificateExpiredError(Exception):
-    pass
+class AuthServer:
+    def __init__(self, ip_address, port, cert_path):
+        self.ipAddress = ip_address
+        self.port = port
+        self.CERT_PATH = cert_path
 
-class CertificateHostnameError(Exception):
-    pass
+    def start_server(self):
+        # Create a server socket
+        serverSocket = socket.socket()
+        serverSocket.bind((self.ipAddress, self.port))
 
-class CertificateIssuerError(Exception):
-    pass
+        # Listen for incoming connections
+        serverSocket.listen()
+        print("Server listening:")
 
-class CertificateVerificationError(Exception):
-    pass
+        # Create an SSL context
+        context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
+        context.verify_mode = ssl.CERT_REQUIRED
 
+        # Uncomment to enable Certificate Revocation List (CRL) check
+        # context.verify_flags = ssl.VERIFY_CRL_CHECK_LEAF
 
-class authServer:
-    def create_server_socket(self, server_ip):
-        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Load CA certificate with which the server will validate the client certificate
+        context.load_verify_locations(f'{self.CERT_PATH}/ca.crt')
 
-        server_address = (server_ip, SERVER_PORT)
+        # Load server certificate and key
+        context.load_cert_chain(certfile=f'{self.CERT_PATH}/server.crt', keyfile=f'{self.CERT_PATH}/server.key')
 
-        server_socket.bind(server_address)
-        server_socket.listen(1)
+        while True:
+            # Keep accepting connections from clients
+            (clientConnection, clientAddress) = serverSocket.accept()
 
-        return server_socket
+            # Make the socket connection to the clients secure through SSLSocket
+            secureClientSocket = context.wrap_socket(clientConnection, server_side=True)
 
+            try:
+                # Obtain the certificate from the client
+                client_cert = secureClientSocket.getpeercert()
+                if not client_cert:
+                    logging.error("Unable to get the certificate from the client", exc_info=True)
+                    raise CertificateNoPresentError("Unable to get the certificate from the client")
 
-    def verify_cert(self, cert):
-        # Perform custom certificate verification here
-        # For example, you can check the certificate's expiration date, subject, issuer, etc.
+                verify_cert(client_cert, "client")
 
-        # Get the certificate expiration date
-        expiration_date = datetime.strptime(cert['notAfter'], '%b %d %H:%M:%S %Y %Z')
-        current_date = datetime.now()
+                # Send current server time to the client
+                serverTimeNow = f"{datetime.now()}"
+                secureClientSocket.send(serverTimeNow.encode())
+                print(f"Securely sent {serverTimeNow} to {clientAddress}")
+                logging.info(f"Securely sent {serverTimeNow} to {clientAddress}")
 
-        # Check if the certificate has expired
-        if expiration_date < current_date:
-            # raise ValueError("Certificate has expired.")
-            logging.error("Certificate has expired.", exc_info=True)
-            raise CertificateExpiredError("Certificate has expired.")
+            finally:
+                # Close the connection to the client
+                secureClientSocket.close()
 
-        # Check if the certificate's common name (CN) matches the expected hostname or IP address
-        common_name = cert['subject'][0][0][1]
-        expected_hostname = 'client'  # Replace this with the expected hostname or IP address
-        if common_name != expected_hostname:
-            logging.error("Certificate common name does not match the expected hostname.", exc_info=True)
-            raise CertificateHostnameError(f"Certificate common name '{common_name}' does not match the expected hostname.")
+if __name__ == "__main__":
+    # IP address and the port number of the server
+    ipAddress = "127.0.0.1"
+    port = 15001
+    CERT_PATH = '../../certificates'  # Change this to the actual path of your certificates
 
-
-        # Check if the certificate is issued by a trusted CA
-        issuer = cert['issuer'][0][0][1]
-        trusted_ca = 'TII'  # Replace this with the trusted CA's distinguished name (DN)
-        if issuer != trusted_ca:
-            logging.error("Certificate issuer is not a trusted CA", exc_info=True)
-            raise CertificateIssuerError(f"Certificate issuer '{issuer}' is not a trusted CA.")
-
-        # Optionally, you can check other certificate properties like the key usage, extended key usage, etc.
-
-        # If the client certificate has passed all verifications, you can print or log a success message
-        print("Certificate verification successful.")
-        logging.info("Certificate verification successful.")
-
-
-
-    def handle_client(self, connection):
-        ssl_connection = None
-        try:
-            context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-            context.load_cert_chain(
-                certfile=f'{CERT_PATH}/server.crt',
-                keyfile=f'{CERT_PATH}/server.key',
-            )
-
-            context.verify_mode = ssl.CERT_REQUIRED
-            context.load_verify_locations(f'{CERT_PATH}/ca.crt')
-
-            # Uncomment to enable Certificate Revocation List (CRL) check
-            # context.verify_flags = ssl.VERIFY_CRL_CHECK_LEAF
-
-            ssl_connection = context.wrap_socket(connection, server_side=True, do_handshake_on_connect=True)
-
-            cert = ssl_connection.getpeercert()
-            self.verify_cert(cert)
-
-            # Perform any desired communication with the client
-            data = ssl_connection.recv(1024)
-            logging.info(f"Received from client: {data.decode()}")
-
-            ssl_connection.sendall(b"Hello, client! This is the server.")
-
-        except ssl.SSLError as e:
-            logging.error("SSL error:", exc_info=True)
-            raise CertificateVerificationError(
-                "SSL error during certificate verification."
-            ) from e
-
-        except ValueError as e:
-            logging.error("Certificate verification failed:", exc_info=True)
-            raise CertificateVerificationError("Certificate verification failed.") from e
-
-        except socket.error as e:
-            logging.error("Socket error:", exc_info=True)
-            raise CertificateVerificationError(
-                "Socket error during certificate verification."
-            ) from e
-
-        finally:
-            if ssl_connection:
-                with contextlib.suppress(socket.error):
-                    with contextlib.suppress(ssl.SSLError):
-                        ssl_connection.shutdown(socket.SHUT_RDWR)
-                ssl_connection.close()
-                logging.info("Client connection closed.")
-
-
-    def main(self, server_ip):
-        server_socket = self.create_server_socket(server_ip)
-
-        try:
-            logging.info("Server is running. Listening for connections...")
-            while True:
-                connection, client_address = server_socket.accept()
-                logging.info(f"Connection from: {client_address}")
-                self.handle_client(connection)
-        except KeyboardInterrupt:
-            logging.info("Server is shutting down.")
-        finally:
-            server_socket.close()
-
-    def run(self):
-        self.main(server_ip='127.0.0.1')  # Replace 'your_server_ip' with your server's IP address
-
+    auth_server = AuthServer(ipAddress, port, CERT_PATH)
+    auth_server.start_server()
