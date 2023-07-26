@@ -1,10 +1,36 @@
 import socket
 import ssl
-import logging
+import sys
 from verification_tools import *
+import logging
 
-# Configure logging for the client
-logging.basicConfig(filename='authClient.log', encoding='utf-8', level=logging.INFO, format='[%(asctime)s] %(message)s')
+ROLE="Client"
+
+
+# Create a custom logger
+logger = logging.getLogger(f"Auth{ROLE}")
+logger.setLevel(logging.INFO)
+
+# Create file handler
+file_handler = logging.FileHandler(f'auth{ROLE}.log', encoding='utf-8')
+file_handler.setLevel(logging.INFO)
+
+# Create console handler
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+
+# Create a formatter
+formatter = logging.Formatter(
+    f'[%(asctime)s] [{ROLE}] %(levelname)s %(message)s'
+)
+file_handler.setFormatter(formatter)
+console_handler.setFormatter(formatter)
+
+# Add the handlers to the logger
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
+
+
 
 class AuthClient:
     def __init__(self, server_ip, server_port, cert_path):
@@ -45,14 +71,14 @@ class AuthClient:
         # Obtain the server certificate
         server_cert = secureClientSocket.getpeercert()
         if not server_cert:
-            logging.error("Unable to get the server certificate", exc_info=True)
+            logger.error("Unable to get the server certificate", exc_info=True)
             raise CertificateNoPresentError("Unable to get the server certificate")
 
-        verify_cert(server_cert, "server")
+        verify_cert(server_cert, "server", logger)
 
         # Safe to proceed with the communication
         msgReceived = secureClientSocket.recv(1024)
-        logging.info(f"Secure communication received from server: {msgReceived.decode()}")
+        logger.info(f"Secure communication received from server: {msgReceived.decode()}")
 
 if __name__ == "__main__":
     # IP address and the port number of the server

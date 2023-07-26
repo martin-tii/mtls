@@ -1,5 +1,4 @@
 from datetime import datetime
-import logging
 
 # Custom exceptions for certificate verification
 class CertificateExpiredError(Exception):
@@ -20,7 +19,7 @@ class CertificateVerificationError(Exception):
 class CertificateNoPresentError(Exception):
     pass
 
-def verify_cert(cert, hostname):
+def verify_cert(cert, hostname, logging):
     # Perform custom certificate verification here
     # For example, you can check the certificate's expiration date, subject, issuer, etc.
 
@@ -56,5 +55,4 @@ def verify_cert(cert, hostname):
     # Optionally, you can check other certificate properties like the key usage, extended key usage, etc.
 
     # If the client certificate has passed all verifications, you can print or log a success message
-    print("Certificate verification successful.")
     logging.info("Certificate verification successful.")

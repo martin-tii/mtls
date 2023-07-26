@@ -1,9 +1,34 @@
 import ssl
 import socket
 from verification_tools import *
+import sys
+import logging
 
-# Logging configuration
-logging.basicConfig(filename='authServer.log', encoding='utf-8', level=logging.INFO, format='[%(asctime)s] %(message)s')
+ROLE="Server"
+
+# Create a custom logger
+logger = logging.getLogger(f"Auth{ROLE}")
+logger.setLevel(logging.INFO)
+
+# Create file handler
+file_handler = logging.FileHandler(f'auth{ROLE}.log', encoding='utf-8')
+file_handler.setLevel(logging.INFO)
+
+# Create console handler
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+
+# Create a formatter
+formatter = logging.Formatter(
+    f'[%(asctime)s] [{ROLE}] %(levelname)s %(message)s'
+)
+file_handler.setFormatter(formatter)
+console_handler.setFormatter(formatter)
+
+# Add the handlers to the logger
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
+
 
 class AuthServer:
     def __init__(self, ip_address, port, cert_path):
@@ -18,7 +43,7 @@ class AuthServer:
 
         # Listen for incoming connections
         serverSocket.listen()
-        print("Server listening:")
+        logger.info("Server listening")
 
         # Create an SSL context
         context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
@@ -44,16 +69,15 @@ class AuthServer:
                 # Obtain the certificate from the client
                 client_cert = secureClientSocket.getpeercert()
                 if not client_cert:
-                    logging.error("Unable to get the certificate from the client", exc_info=True)
+                    logger.error("Unable to get the certificate from the client", exc_info=True)
                     raise CertificateNoPresentError("Unable to get the certificate from the client")
 
-                verify_cert(client_cert, "client")
+                verify_cert(client_cert, "client", logger)
 
                 # Send current server time to the client
                 serverTimeNow = f"{datetime.now()}"
                 secureClientSocket.send(serverTimeNow.encode())
-                print(f"Securely sent {serverTimeNow} to {clientAddress}")
-                logging.info(f"Securely sent {serverTimeNow} to {clientAddress}")
+                logger.info(f"Securely sent {serverTimeNow} to {clientAddress}")
 
             finally:
                 # Close the connection to the client
