@@ -36,6 +36,12 @@ class AuthServer:
         self.port = port
         self.CERT_PATH = cert_path
 
+        # Create the SSL context here and set it as an instance variable
+        self.context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
+        self.context.verify_mode = ssl.CERT_REQUIRED
+        self.context.load_verify_locations(f'{self.CERT_PATH}/ca.crt')
+        self.context.load_cert_chain(certfile=f'{self.CERT_PATH}/server.crt', keyfile=f'{self.CERT_PATH}/server.key')
+
     def start_server(self):
         # Create a server socket
         serverSocket = socket.socket()
@@ -45,25 +51,12 @@ class AuthServer:
         serverSocket.listen()
         logger.info("Server listening")
 
-        # Create an SSL context
-        context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
-        context.verify_mode = ssl.CERT_REQUIRED
-
-        # Uncomment to enable Certificate Revocation List (CRL) check
-        # context.verify_flags = ssl.VERIFY_CRL_CHECK_LEAF
-
-        # Load CA certificate with which the server will validate the client certificate
-        context.load_verify_locations(f'{self.CERT_PATH}/ca.crt')
-
-        # Load server certificate and key
-        context.load_cert_chain(certfile=f'{self.CERT_PATH}/server.crt', keyfile=f'{self.CERT_PATH}/server.key')
-
         while True:
             # Keep accepting connections from clients
             (clientConnection, clientAddress) = serverSocket.accept()
 
             # Make the socket connection to the clients secure through SSLSocket
-            secureClientSocket = context.wrap_socket(clientConnection, server_side=True)
+            secureClientSocket = self.context.wrap_socket(clientConnection, server_side=True)
 
             try:
                 # Obtain the certificate from the client
