@@ -3,6 +3,7 @@ import socket
 from verification_tools import *
 import sys
 import logging
+import threading
 
 ROLE="Server"
 
@@ -42,6 +43,25 @@ class AuthServer:
         self.context.load_verify_locations(f'{self.CERT_PATH}/ca.crt')
         self.context.load_cert_chain(certfile=f'{self.CERT_PATH}/server.crt', keyfile=f'{self.CERT_PATH}/server.key')
 
+    def handle_client(self, secure_client_socket, client_address):
+        try:
+            # Obtain the certificate from the client
+            client_cert = secure_client_socket.getpeercert()
+            if not client_cert:
+                logger.error("Unable to get the certificate from the client", exc_info=True)
+                raise CertificateNoPresentError("Unable to get the certificate from the client")
+
+            verify_cert(client_cert, "client", logger)
+
+            # Send current server time to the client
+            serverTimeNow = f"{datetime.now()}"
+            secure_client_socket.send(serverTimeNow.encode())
+            logger.info(f"Securely sent {serverTimeNow} to {client_address}")
+
+        finally:
+            # Close the connection to the client
+            secure_client_socket.close()
+
     def start_server(self):
         # Create a server socket
         serverSocket = socket.socket()
@@ -53,28 +73,14 @@ class AuthServer:
 
         while True:
             # Keep accepting connections from clients
-            (clientConnection, clientAddress) = serverSocket.accept()
+            (client_connection, client_address) = serverSocket.accept()
 
             # Make the socket connection to the clients secure through SSLSocket
-            secureClientSocket = self.context.wrap_socket(clientConnection, server_side=True)
+            secure_client_socket = self.context.wrap_socket(client_connection, server_side=True)
 
-            try:
-                # Obtain the certificate from the client
-                client_cert = secureClientSocket.getpeercert()
-                if not client_cert:
-                    logger.error("Unable to get the certificate from the client", exc_info=True)
-                    raise CertificateNoPresentError("Unable to get the certificate from the client")
-
-                verify_cert(client_cert, "client", logger)
-
-                # Send current server time to the client
-                serverTimeNow = f"{datetime.now()}"
-                secureClientSocket.send(serverTimeNow.encode())
-                logger.info(f"Securely sent {serverTimeNow} to {clientAddress}")
-
-            finally:
-                # Close the connection to the client
-                secureClientSocket.close()
+            # Start a new thread to handle the client
+            client_thread = threading.Thread(target=self.handle_client, args=(secure_client_socket, client_address))
+            client_thread.start()
 
 if __name__ == "__main__":
     # IP address and the port number of the server
