@@ -1,8 +1,10 @@
 import socket
 import ssl
 import sys
-from verification_tools import *
 import logging
+sys.path.insert(0, '../')
+from tools.verification_tools import *
+
 
 ROLE="Client"
 
@@ -74,17 +76,18 @@ class AuthClient:
             logger.error("Unable to get the server certificate", exc_info=True)
             raise CertificateNoPresentError("Unable to get the server certificate")
 
-        verify_cert(server_cert, "server", logger)
+        auth = verify_cert(server_cert, "server", logger)
 
         # Safe to proceed with the communication
         msgReceived = secureClientSocket.recv(1024)
         logger.info(f"Secure communication received from server: {msgReceived.decode()}")
+        return auth
 
 if __name__ == "__main__":
     # IP address and the port number of the server
     sslServerIP = "127.0.0.1"
     sslServerPort = 15001
-    CERT_PATH = '../../certificates'  # Change this to the actual path of your certificates
+    CERT_PATH = '../../../certificates'  # Change this to the actual path of your certificates
 
     auth_client = AuthClient(sslServerIP, sslServerPort, CERT_PATH)
     auth_client.establish_connection()

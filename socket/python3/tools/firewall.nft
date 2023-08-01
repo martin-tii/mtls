@@ -1,0 +1,16 @@
+#!/usr/sbin/nft -f
+
+table inet filter {
+    chain input {
+        type filter hook input priority 0; policy drop;
+
+        # Accept MACSec traffic (Ethernet type 0x88e5)
+        meta protocol ether type 0x88e5 accept
+
+        # Accept AH traffic (IP type 50)
+        ip protocol ah accept
+
+        # Accept ESP traffic (IP type 51)
+        ip protocol esp accept
+    }
+}

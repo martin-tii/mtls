@@ -1,9 +1,13 @@
 import ssl
 import socket
-from verification_tools import *
-import sys
+#from socket.python3.tools.verification_tools import *
 import logging
 import threading
+import datetime
+import sys
+sys.path.insert(0, '../')
+from tools.verification_tools import *
+
 
 ROLE="Server"
 
@@ -42,6 +46,8 @@ class AuthServer:
         self.context.verify_mode = ssl.CERT_REQUIRED
         self.context.load_verify_locations(f'{self.CERT_PATH}/ca.crt')
         self.context.load_cert_chain(certfile=f'{self.CERT_PATH}/server.crt', keyfile=f'{self.CERT_PATH}/server.key')
+        self.client_auth_results = {}
+
 
     def handle_client(self, secure_client_socket, client_address):
         try:
@@ -51,16 +57,21 @@ class AuthServer:
                 logger.error("Unable to get the certificate from the client", exc_info=True)
                 raise CertificateNoPresentError("Unable to get the certificate from the client")
 
-            verify_cert(client_cert, "client", logger)
+            auth = verify_cert(client_cert, "client", logger)
 
             # Send current server time to the client
             serverTimeNow = f"{datetime.now()}"
             secure_client_socket.send(serverTimeNow.encode())
             logger.info(f"Securely sent {serverTimeNow} to {client_address}")
+            # Store the auth result in the instance variable
+            self.client_auth_results[client_address] = auth
 
         finally:
             # Close the connection to the client
             secure_client_socket.close()
+
+    def get_client_auth_result(self, client_address):
+        return self.client_auth_results.get(client_address, None)
 
     def start_server(self):
         # Create a server socket
@@ -86,7 +97,12 @@ if __name__ == "__main__":
     # IP address and the port number of the server
     ipAddress = "127.0.0.1"
     port = 15001
-    CERT_PATH = '../../certificates'  # Change this to the actual path of your certificates
+    CERT_PATH = '../../../certificates'  # Change this to the actual path of your certificates
 
     auth_server = AuthServer(ipAddress, port, CERT_PATH)
     auth_server.start_server()
+
+    # Access the authentication result for a specific client
+    client_address = ("127.0.0.1", 12345)  # Replace with the actual client address you want to check
+    auth_result = auth_server.get_client_auth_result(client_address)
+    print(f"Authentication result for {client_address}: {auth_result}")
