@@ -75,8 +75,6 @@ def set_macsec(role, mesh_iface, key1, key2, mac_server, mac_client):
     modify_conf_file(conf_file_path, new_values)
 
 
-
-
 def run_macsec(args):
     try:
         # Replace 'run_macsec.sh' with the actual path to your bash script
@@ -85,3 +83,87 @@ def run_macsec(args):
     except subprocess.CalledProcessError as e:
         print(f"Error executing the script: {e}")
         sys.exit(1)
+
+def batman_exec(routing_algo, wifidev, ip_address, netmask):
+    if routing_algo != "batman-adv":
+        #TODO here should be OLSR
+        return
+    try:
+        run_batman(wifidev, ip_address, netmask)
+    except subprocess.CalledProcessError as e:
+        print(f"Error: {e}")
+
+
+# TODO Rename this here and in `run_batman_adv_commands`
+def run_batman(wifidev, ip_address, netmask):
+    # Run the batctl if add command
+    subprocess.run(["batctl", "if", "add", wifidev], check=True)
+
+    print("bat0 up..")
+    # Run the ifconfig bat0 up command
+    subprocess.run(["ifconfig", "bat0", "up"], check=True)
+
+    print("bat0 ip address..")
+    # Run the ifconfig bat0 <ip_address> netmask <netmask> command
+    subprocess.run(["ifconfig", "bat0", ip_address, "netmask", netmask], check=True)
+
+    print("bat0 mtu size")
+    # Run the ifconfig bat0 mtu 1460 command
+    subprocess.run(["ifconfig", "bat0", "mtu", "1460"], check=True)
+
+    print()
+    # Run the ifconfig bat0 command to show the interface information
+    subprocess.run(["ifconfig", "bat0"], check=True)
+            # Handle the error if any of the commands fail
+
+def mac_to_ipv6(mac_address):
+    # Remove any separators from the MAC address (e.g., colons, hyphens)
+    mac_address = mac_address.replace(":", "").replace("-", "").lower()
+
+    # Split the MAC address into two equal halves
+    first_half = mac_address[:6]
+    second_half = mac_address[6:]
+
+    # Invert the 7th bit of the first half of the MAC address
+    seventh_bit = int(first_half[1], 16)
+    inverted_seventh_bit = seventh_bit ^ 2  # Bitwise XOR with 2 to invert the bit
+    first_half_with_inverted_seventh_bit = first_half[:1] + hex(inverted_seventh_bit)[2] + first_half[2:]
+
+    return f"fe80::{first_half_with_inverted_seventh_bit}:{second_half}"
+
+
+def mac_to_ipv6(mac_address):
+    # Remove any separators from the MAC address (e.g., colons, hyphens)
+    mac_address = mac_address.replace(":", "").replace("-", "").lower()
+
+    # Split the MAC address into two equal halves
+    first_half = mac_address[:6]
+
+    # Convert the first octet from hexadecimal to binary
+    binary_first_octet = bin(int(first_half[:2], 16))[2:].zfill(8)
+
+
+    # Invert the seventh bit (change 0 to 1 or 1 to 0)
+    inverted_seventh_bit = "1" if binary_first_octet[6] == "0" else "0"
+
+
+    # Convert the modified binary back to hexadecimal
+    modified_first_octet = hex(int(binary_first_octet[:6] + inverted_seventh_bit + binary_first_octet[7:], 2))[2:]
+
+
+    # Replace the original first octet with the modified one
+    modified_mac_address = modified_first_octet + mac_address[2:]
+
+
+    line = f"{modified_mac_address[:6]}fffe{modified_mac_address[6:]}"
+
+    # Add "ff:fe:" to the middle of the new MAC address
+#    mac_with_fffe = ":".join(a + b for a, b in zip(a[::2], a[1::2]))
+    mac_with_fffe = ":".join([line[i:i+4] for i in range(0, len(line), 4)])
+
+    return f"fe80::{mac_with_fffe}"
+
+
+
+
+

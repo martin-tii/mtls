@@ -1,42 +1,29 @@
 #!/bin/bash
 
-# Set the common name (CN) for the server and client certificates
-server_common_name="server"
-client_common_name="client"
+# Check if the "certificates" folder already exists
+if [ ! -d "certificates" ]; then
+    mkdir -p certificates
+fi
 
-# Set the path to the OpenSSL configuration file
-openssl_cnf="../openssl.cnf"
-
-# Create a directory to store the certificates
-mkdir -p certificates
+cp "$1" certificates
 cd certificates
 
-# Generate the Certificate Authority (CA) key and self-signed certificate
-openssl genpkey -algorithm RSA -out ca.key
-openssl req -new -x509 -key ca.key -out ca.crt -days 365 -subj "/CN=TII" -config "$openssl_cnf"
-
-# Generate the server key and certificate signing request (CSR)
-openssl genpkey -algorithm RSA -out server.key
-openssl req -new -key server.key -out server.csr -subj "/CN=${server_common_name}" -config "$openssl_cnf"
+# Check if ca.key exists and if it's still valid
+if [ ! -f ca.key ] || ! openssl ec -in ca.key -noout &>/dev/null; then
+    # Generate the Certificate Authority (CA) key and self-signed certificate
+    openssl ecparam -name prime256v1 -genkey -noout -out ca.key
+    openssl req -new -x509 -key ca.key -out ca.crt -days 365 -subj "/CN=TII"
+fi
 
 # Sign the server CSR with the CA to get the server certificate
-openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt -days 365 -extensions server_cert -extfile "$openssl_cnf"
+openssl x509 -req -in "$1" -CA ca.crt -CAkey ca.key -CAcreateserial -out "$(basename "$1" .csr).crt" -days 365
 
-# Generate the client key and certificate signing request (CSR)
-openssl genpkey -algorithm RSA -out client.key
-openssl req -new -key client.key -out client.csr -subj "/CN=${client_common_name}" -config "$openssl_cnf"
-
-# Sign the client CSR with the CA to get the client certificate
-openssl x509 -req -in client.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out client.crt -days 365 -extensions usr_cert -extfile "$openssl_cnf"
-
-# Clean up the temporary CSR files
-rm *.csr
-
-echo "Certificates have been generated successfully in the 'certificates' directory."
+# Verify that the certificate file has been created
+if [ -f "$(basename "$1" .csr).crt" ]; then
+    echo "Certificates have been generated successfully in the 'certificates' directory."
+else
+    echo "Failed to generate the certificate. Please check the input CSR and CA files."
+fi
 
 echo "Verifying certificates..."
-
-
-openssl verify -CAfile ca.crt client.crt
-
-openssl verify -CAfile ca.crt server.crt
+openssl verify -CAfile ca.crt "$(basename "$1" .csr).crt"

@@ -71,8 +71,12 @@ class mutAuth():
         # Call the function to run the bash script
         run_macsec(["up", self.meshiface, role])
 
-def batman():
-    # todo
+    def batman(self):
+        # todo check the interface
+        ipv6 = mac_to_ipv6(self.meshiface)
+        batman_exec("batman-adv", "wlp1s0", ipv6,  "/64")
+
+
 
 
 
