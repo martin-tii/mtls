@@ -116,21 +116,6 @@ def run_batman(wifidev, ip_address, netmask):
     subprocess.run(["ifconfig", "bat0"], check=True)
             # Handle the error if any of the commands fail
 
-def mac_to_ipv6(mac_address):
-    # Remove any separators from the MAC address (e.g., colons, hyphens)
-    mac_address = mac_address.replace(":", "").replace("-", "").lower()
-
-    # Split the MAC address into two equal halves
-    first_half = mac_address[:6]
-    second_half = mac_address[6:]
-
-    # Invert the 7th bit of the first half of the MAC address
-    seventh_bit = int(first_half[1], 16)
-    inverted_seventh_bit = seventh_bit ^ 2  # Bitwise XOR with 2 to invert the bit
-    first_half_with_inverted_seventh_bit = first_half[:1] + hex(inverted_seventh_bit)[2] + first_half[2:]
-
-    return f"fe80::{first_half_with_inverted_seventh_bit}:{second_half}"
-
 
 def mac_to_ipv6(mac_address):
     # Remove any separators from the MAC address (e.g., colons, hyphens)
@@ -164,6 +149,15 @@ def mac_to_ipv6(mac_address):
     return f"fe80::{mac_with_fffe}"
 
 
-
+def get_mac_addr(EXPECTED_INTERFACE):
+    '''
+    got it from common/tools/field_test_logger/wifi_info.py
+    '''
+    try:
+        with open(f"/sys/class/net/{EXPECTED_INTERFACE}/address", 'r') as f:
+            value = f.readline()
+            return value.strip()
+    except:
+        return "NaN"
 
 

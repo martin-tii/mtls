@@ -3,14 +3,15 @@ from tools.monitoring_wpa import *
 from auth.authServer import AuthServer
 from auth.authClient import AuthClient
 from tools.utils import  *
+import os
 
 BEACON_TIME = 10
 MAX_CONSECUTIVE_NOT_RECEIVED = 2
 class mutAuth():
     def __init__(self):
         self.meshiface = "wlp1s0"
-        self.mymac = "dc:a6:32:11:22:33"
-        self.ipAddress = "127.0.0.1"
+        self.mymac = get_mac_addr(self.meshiface)
+        self.ipAddress = mac_to_ipv6(self.mymac)
         self.port = 15001
         self.CERT_PATH = '../../certificates'  # Change this to the actual path of your certificates
         self.server = False
@@ -76,6 +77,11 @@ class mutAuth():
         ipv6 = mac_to_ipv6(self.meshiface)
         batman_exec("batman-adv", "wlp1s0", ipv6,  "/64")
 
+    def get_session_key(self):
+        rand = os.urandom(32)
+        return int.from_bytes(rand, 'big')
+
+
 
 
 
@@ -104,6 +110,9 @@ if __name__ == "__main__":
 
         # beacon
         #TODO define beacon
+        # OpenSSL.SSL.Context(DTLS_METHOD, or DTLS_CLIENT_METHOD and DTLS_SERVER_METHOD) then
+        # bio_read() and bio_write()
+        # for using DTLS with Scapy instead of a socket
 
 
         # TODO define the logic for the auth verification
@@ -114,10 +123,12 @@ if __name__ == "__main__":
         # client_address = ("127.0.0.1", 12345)  # Replace with the actual client address you want to check
         # auth_result = auth_server.get_client_auth_result(client_address)
         # print(f"Authentication result for {client_address}: {auth_result}")
-        # if auth_result:
-        #     mua.macsec()
-        #     mua.batman
-        #
+        if auth_result:
+            rand = mua.get_session_key()
+            # neeed to exchange the key
+            mua.macsec()
+            mua.batman
+
         #
 
         # try:
@@ -130,3 +141,17 @@ if __name__ == "__main__":
 
         # Wait for the monitoring module process to finish before exiting the main process
         event_process.join()
+
+
+'''
+TODO:
+1) Beacon 
+2) Test auth
+3) Check how to use the context (for the secure channel)
+4) Get Auth from server/client
+5) generate session key (with XOR)
+7) test macsec
+8) test batman_adv implementation
+9) ipsec
+
+'''

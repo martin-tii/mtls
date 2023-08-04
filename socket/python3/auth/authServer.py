@@ -3,11 +3,11 @@ import socket
 #from socket.python3.tools.verification_tools import *
 import logging
 import threading
-import datetime
+from datetime import datetime
 import sys
 sys.path.insert(0, '../')
 from tools.verification_tools import *
-
+import glob
 
 ROLE="Server"
 
@@ -44,8 +44,11 @@ class AuthServer:
         # Create the SSL context here and set it as an instance variable
         self.context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
         self.context.verify_mode = ssl.CERT_REQUIRED
-        self.context.load_verify_locations(f'{self.CERT_PATH}/ca.crt')
-        self.context.load_cert_chain(certfile=f'{self.CERT_PATH}/server.crt', keyfile=f'{self.CERT_PATH}/server.key')
+        self.context.load_verify_locations(glob.glob(f'{self.CERT_PATH}/ca.crt')[0])
+        self.context.load_cert_chain(
+            certfile=glob.glob(f'{self.CERT_PATH}/csl*.crt')[0],
+            keyfile=glob.glob(f'{self.CERT_PATH}/csl*.key')[0],
+        )
         self.client_auth_results = {}
 
 

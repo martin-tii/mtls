@@ -1,5 +1,11 @@
 #!/bin/bash
 
+
+if [ -z "$1" ]; then
+    echo "Please provide the CSR file as an argument."
+    exit 1
+fi
+
 # Check if the "certificates" folder already exists
 if [ ! -d "certificates" ]; then
     mkdir -p certificates

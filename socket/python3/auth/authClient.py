@@ -4,7 +4,7 @@ import sys
 import logging
 sys.path.insert(0, '../')
 from tools.verification_tools import *
-
+import glob
 
 ROLE="Client"
 
@@ -48,11 +48,12 @@ class AuthClient:
         # Uncomment to enable Certificate Revocation List (CRL) check
         # context.verify_flags = ssl.VERIFY_CRL_CHECK_LEAF
 
-        # Load CA certificate with which the client will validate the server certificate
-        context.load_verify_locations(f'{self.CERT_PATH}/ca.crt')
 
-        # Load client certificate and key
-        context.load_cert_chain(certfile=f'{self.CERT_PATH}/client.crt', keyfile=f'{self.CERT_PATH}/client.key')
+        context.load_verify_locations(glob.glob(f'{self.CERT_PATH}/ca.crt')[0])
+        context.load_cert_chain(
+            certfile=glob.glob(f'{self.CERT_PATH}/csl*.crt')[0],
+            keyfile=glob.glob(f'{self.CERT_PATH}/csl*.key')[0],
+        )
 
         # Create a client socket
         clientSocket = socket.socket()

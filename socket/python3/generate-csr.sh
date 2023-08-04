@@ -76,6 +76,8 @@ IP.2 = $mesh_ipv6
 email.1 = info@tii.com
 EOF
 
+
+mv example.key csl$id.key
 # Create the CSR using the generated private key and the custom CSR configuration
-openssl req -new -key example.key -out csl$id.csr -config csr.conf
+openssl req -new -key csl$id.key -out csl$id.csr -config csr.conf
 echo "CSR generated: " "csl$id.csr"
