@@ -29,8 +29,13 @@ function mac_to_ipv6() {
     echo "fe80::$mac_with_fffe"
 }
 
-# Read the user input for the network interface
-read -p "Enter the network interface (e.g., wlan0): " network_interface
+# Read the user input for the network interface, defaulting to "wlp1s0" if no input is provided
+#read -p "Enter the network interface (default: wlp1s0): " network_interface
+#network_interface=${network_interface:-wlp1s0}
+
+# Get the network interface from the command-line argument or use a default value
+network_interface=${1:-wlp1s0}
+
 
 # Parse the MAC address from the network interface using ip command
 mac_address=$(ip link show $network_interface | awk '/ether/ {print $2}')
