@@ -1,3 +1,10 @@
+"""
+for running this code, it is necessary to add the pub key for ssh on the other node.
+Steps:
+1)  ssh-keygen -t ecdsa
+2) ssh-copy-id user@somedomain (to server)
+"""
+#TODO: change to ntas
 import os
 import subprocess
 import socket

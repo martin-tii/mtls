@@ -33,4 +33,3 @@ def test_handle_client(mock_log_error, mock_remove, mock_gen_send, mock_exists, 
     mock_gen_send.assert_called_once_with('/tmp/request/test.csr', '127.0.0.1')
     mock_remove.assert_called_once_with('/tmp/request/test.csr')
     mock_log_error.assert_not_called()
-

@@ -1,9 +1,17 @@
+"""
+for running this code, it is necessary to add the pub key for ssh on the other node.
+Steps:
+1)  ssh-keygen -t ecdsa
+2) ssh-copy-id user@somedomain (to server)
+"""
 import subprocess
 import socket
 import os
 import time
 # Constants
 REMOTE_PATH = "/tmp/request"
+if not os.path.exists(REMOTE_PATH):
+    os.makedirs(REMOTE_PATH)
 CUSTOM_PORT = 12345
 CSR_SCRIPT_PATH = "./generate-csr.sh"
 

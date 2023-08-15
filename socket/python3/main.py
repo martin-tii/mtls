@@ -22,6 +22,7 @@ class mutAuth():
         if not is_wpa_supplicant_running():
             print("wpa_supplicant process is not running.")
             run_wpa_supplicant(self.meshiface)
+            set_ipv6(self.meshiface, self.ipAddress)
 
     def set_firewall(self):
         apply_nft_rules()
@@ -33,7 +34,7 @@ class mutAuth():
         self.message_received = True  # Set this to False if the message is not received
         return serverIP
 
-    def other_module(self, queue):
+    def message_received(self, queue):
         consecutive_not_received_count = 0
         while True:
             mac_address = queue.get()
@@ -105,7 +106,7 @@ if __name__ == "__main__":
         event_process.start()
 
         # Start the other module as a separate process
-        other_module_process = multiprocessing.Process(target=mua.other_module, args=(event_queue,))
+        other_module_process = multiprocessing.Process(target=mua.message_received, args=(event_queue,))
         other_module_process.start()
 
         # beacon

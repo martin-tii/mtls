@@ -1,14 +1,18 @@
-import psutil
 import subprocess
 import configparser
 import sys
+import os
+import time
+import shutil
 
 
 def is_wpa_supplicant_running():
-    return any(
-        proc.info['name'] == 'wpa_supplicant'
-        for proc in psutil.process_iter(['pid', 'name'])
-    )
+    try:
+        subprocess.check_output(['pgrep', 'wpa_supplicant'])
+
+        return True
+    except subprocess.CalledProcessError:
+        return False
 
 def run_wpa_supplicant(wifidev):
     '''
@@ -17,6 +21,7 @@ def run_wpa_supplicant(wifidev):
     '''
     conf_file = "/var/run/wpa_supplicant-11s.conf"
     log_file = "/tmp/wpa_supplicant_11s.log"
+    shutil.copy("wpa_supplicant-11s.conf", conf_file) # this is only for testing
 
     # Build the command with all the arguments
     command = [
@@ -31,10 +36,48 @@ def run_wpa_supplicant(wifidev):
 
     try:
         # Run the wpa_supplicant command as a subprocess
-        subprocess.run(command, check=True)
-        print("wpa_supplicant process started successfully.")
+        result = subprocess.run(command, check=True)
+        if result.returncode != 0:
+            print(f"Error executing command: {result.args}. Return code: {result.returncode}")
+        else:
+            print("wpa_supplicant process started successfully.")
     except subprocess.CalledProcessError as e:
         print(f"Error starting wpa_supplicant process: {e}")
+
+def mesh_service():
+    # Check if mesh provisioning is done
+    # we are assuming that the file exists on /opt/mesh.conf
+    if os.path.exists("/opt/S9011sMesh"):
+        # Start Mesh service
+        try:
+            print("starting 11s mesh service")
+            result = subprocess.run(["/opt/S9011sMesh", "start"], check=True, capture_output=True, text=True)
+            time.sleep(2)
+        except subprocess.CalledProcessError as e:
+            print(f"Error executing command: {e.cmd}. Return code: {e.returncode}")
+            print(f"Error output: {e.stderr}")
+
+# Call the function
+
+
+def killall(interface):
+    try:
+        # Kill wpa_supplicant
+        result = subprocess.run(['killall', 'wpa_supplicant'], capture_output=True, text=True)
+        if result.returncode != 0:
+            if "no process killed" in result.stderr:
+                print("wpa_supplicant process was not running.")
+            else:
+                print(f"Error executing command: {result.args}. Return code: {result.returncode}")
+
+        # Bring the interface down
+        subprocess.run(['ifconfig', interface, 'down'], check=True)
+
+        # Bring the interface back up
+        subprocess.run(['ifconfig', interface, 'up'], check=True)
+
+    except subprocess.CalledProcessError as e:
+        print(f"Error executing command: {e.cmd}. Return code: {e.returncode}")
 
 def apply_nft_rules(rules_file="firewall.nft"):
     try:
@@ -43,7 +86,6 @@ def apply_nft_rules(rules_file="firewall.nft"):
         print("nftables rules applied successfully.")
     except subprocess.CalledProcessError as e:
         print(f"Error applying nftables rules: {e}")
-
 
 
 def modify_conf_file(conf_file_path, new_values):
@@ -140,11 +182,11 @@ def mac_to_ipv6(mac_address):
     modified_mac_address = modified_first_octet + mac_address[2:]
 
 
-    line = f"{modified_mac_address[:6]}fffe{modified_mac_address[6:]}"
+    line = f"{modified_mac_address[:5]}fffe{modified_mac_address[5:]}"
 
     # Add "ff:fe:" to the middle of the new MAC address
 #    mac_with_fffe = ":".join(a + b for a, b in zip(a[::2], a[1::2]))
-    mac_with_fffe = ":".join([line[i:i+4] for i in range(0, len(line), 4)])
+    mac_with_fffe = ":".join([line[:3], line[3:7], line[7:11], line[11:]])
 
     return f"fe80::{mac_with_fffe}"
 
@@ -161,3 +203,10 @@ def get_mac_addr(EXPECTED_INTERFACE):
         return "NaN"
 
 
+def set_ipv6(interface, ipv6):
+    command = ["ip", "-6", "addr", "add", f"{ipv6}/64", "dev", interface]
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, check=True)
+        print(result.stdout)
+    except subprocess.CalledProcessError as e:
+        print(f"Command failed with error: {e.stderr}")
