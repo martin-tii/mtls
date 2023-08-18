@@ -2,48 +2,57 @@ import socket
 import struct
 import threading
 import time
-import logging
 import argparse
 import json
 import sys
-from queue import Queue
+from queue import Queue, Empty
 sys.path.insert(0, '../')
 from tools.utils import get_mac_addr
-
-logging.basicConfig(level=logging.INFO)
-
-
-# Sender
-def send_multicast_message(multicast_group, port, data):
-    with socket.socket(socket.AF_INET6, socket.SOCK_DGRAM) as sock:
-        sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_HOPS, 1)
-
-        data = {
-            'mac_address': data,
-            'message_type': 'mac_announcement'
-        }
-
-        logging.info(f'Sending data {data} to {multicast_group}:{port}')
-        sock.sendto(json.dumps(data).encode('utf-8'), (multicast_group, port))
+from tools.custom_logger import CustomLogger
 
 
-# Receiver
-def receive_multicast(multicast_group, port, queue=None):  # default the queue to None
-    with socket.socket(socket.AF_INET6, socket.SOCK_DGRAM) as sock:
-        sock.bind(('', port))
 
-        group = socket.inet_pton(socket.AF_INET6, multicast_group)
-        mreq = group + struct.pack('@I', 0)
-        sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_JOIN_GROUP, mreq)
 
-        logging.info(f"Listening for messages on {multicast_group}:{port}...")
-        while True:
-            data, address = sock.recvfrom(1024)
-            decoded_data = json.loads(data.decode())
-            logging.info(f'Received data {decoded_data} from {address}')
+class MulticastHandler:
+    def __init__(self, qeue, multicast_group, port):
+        self.queue = qeue
+        self.multicast_group = multicast_group
+        self.port = port
+        self.logger = self._setup_logger()
 
-            if 'mac_address' in decoded_data and queue:  # Ensure queue is not None
-                queue.put(decoded_data['mac_address'])
+    def _setup_logger(self):
+        logger_instance = CustomLogger("multicast")
+        return logger_instance.get_logger()
+
+    def send_multicast_message(self, data):
+        with socket.socket(socket.AF_INET6, socket.SOCK_DGRAM) as sock:
+            sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_HOPS, 1)
+            message = {
+                'mac_address': data,
+                'message_type': 'mac_announcement'
+            }
+            self.logger.info(f'Sending data {message} to {self.multicast_group}:{self.port}')
+            sock.sendto(json.dumps(message).encode('utf-8'), (self.multicast_group, self.port))
+
+    def receive_multicast(self):
+        with socket.socket(socket.AF_INET6, socket.SOCK_DGRAM) as sock:
+            sock.bind(('', self.port))
+
+            group = socket.inet_pton(socket.AF_INET6, self.multicast_group)
+            mreq = group + struct.pack('@I', 0)
+            sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_JOIN_GROUP, mreq)
+
+            self.logger.info(f"Listening for messages on {self.multicast_group}:{self.port}...")
+            while True:
+                data, address = sock.recvfrom(1024)
+                decoded_data = json.loads(data.decode())
+                self.logger.info(f'Received data {decoded_data} from {address}')
+
+                if 'mac_address' in decoded_data:
+                    self.queue.put(("MULTICAST", decoded_data['mac_address']))
+
+    def multicast_message(self):
+        self.receive_multicast()
 
 
 def main():
@@ -54,30 +63,34 @@ def main():
     parser.add_argument('--port', type=int, default=12345, help='Port to use (default: 12345)')
 
     args = parser.parse_args()
+    queue = Queue()
+
+    multicast_handler = MulticastHandler(queue, args.address, args.port)
 
     if args.mode == 'receive':
-        # No need for a queue if just in receive mode
-        receive_multicast(args.address, args.port, None)
+        multicast_handler.receive_multicast()
     elif args.mode == 'send':
-        send_multicast_message(args.address, args.port, message)
+        multicast_handler.send_multicast_message(message)
     elif args.mode == 'both':
-        queue = Queue()
-        receiver_thread = threading.Thread(target=receive_multicast, args=(args.address, args.port, queue))
+        receiver_thread = threading.Thread(target=multicast_handler.multicast_message)
         receiver_thread.start()
 
         # Wait a bit for the receiver thread to start
         time.sleep(2)
 
-        send_multicast_message(args.address, args.port, message)
-
-        received_mac = queue.get()  # This will block until a MAC address is received
-        logging.info(f"Main thread received MAC: {received_mac}")
+        multicast_handler.send_multicast_message(message)
 
         try:
-            # Keep the script running so the receiver continues listening.
-            receiver_thread.join()
+            while True:
+                source, data = queue.get(timeout=10)
+                if source == "MULTICAST":
+                    multicast_handler.logger.info(f"Main thread received MAC: {data}")
+
+        except Empty:
+            pass
+
         except KeyboardInterrupt:
-            logging.info("Shutting down...")
+            multicast_handler.logger.info("Shutting down...")
             sys.exit(0)
 
 

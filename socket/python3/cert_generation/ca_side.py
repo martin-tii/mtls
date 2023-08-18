@@ -11,9 +11,13 @@ import socket
 import threading
 import time
 import shutil
-import logging
-import sys
 import argparse
+import sys
+sys.path.insert(0, '../')
+from tools.custom_logger import CustomLogger
+
+logger_instance = CustomLogger("ca-side")
+logger = logger_instance.get_logger()
 
 # Create the CSR directory if it doesn't exist
 csr_directory = "/tmp/request/"  # Update this with the actual path
@@ -21,31 +25,7 @@ if not os.path.exists(csr_directory):
     os.makedirs(csr_directory)
 
 
-# Create a custom logger
-logger = logging.getLogger('server.log')
-logger.setLevel(logging.INFO)
 
-# Create file handler
-file_handler = logging.FileHandler('server.log', encoding='utf-8')
-file_handler.setLevel(logging.INFO)
-
-# Create console handler
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-
-# Create a formatter
-formatter = logging.Formatter(
-    '[%(asctime)s] [CA SERVER] %(levelname)s %(message)s'
-)
-file_handler.setFormatter(formatter)
-console_handler.setFormatter(formatter)
-
-# Add the handlers to the logger
-logger.addHandler(file_handler)
-logger.addHandler(console_handler)
-
-# Set up logging
-logging.basicConfig(filename='server.log', level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Function to run a command and get its output
 def run_command(command):

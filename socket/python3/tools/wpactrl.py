@@ -61,6 +61,7 @@ class WpaCtrl:
         return self.socket.fileno()
 
 # import contextlib
+# from wpacrtl import WpaCtrl
 #
 # with WpaCtrl("/var/run/wpa_supplicant/wlp1s0") as ctrl:
 #     ctrl.attach()
@@ -75,13 +76,13 @@ class WpaCtrl:
 #                 if "MESH-PEER-CONNECTED" in decoded_response:
 #                     mac_address = decoded_response.split()[-1]
 #                     event = f"MESH-PEER-CONNECTED {mac_address}"
-#                     logging.info(event)
+#                     print(event)
 #
 #                 # Check for the MESH-PEER-DISCONNECTED event
 #                 if "<3>MESH-PEER-DISCONNECTED" in decoded_response:
 #                     mac_address = decoded_response.split()[-1]
 #                     event = f"MESH-PEER-DISCONNECTED {mac_address}"
-#                     logging.info(event)
+#                     print(event)
 #
 #                 print("<", decoded_response)
 #

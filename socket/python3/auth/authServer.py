@@ -1,46 +1,24 @@
-import ssl
 import socket
-#from socket.python3.tools.verification_tools import *
-import logging
+import ssl
 import threading
-from datetime import datetime
+from tools.utils import is_ipv4, is_ipv6
 import sys
 sys.path.insert(0, '../')
 from tools.verification_tools import *
+from tools.custom_logger import CustomLogger
 import glob
 
-ROLE="Server"
-
-# Create a custom logger
-logger = logging.getLogger(f"Auth{ROLE}")
-logger.setLevel(logging.INFO)
-
-# Create file handler
-file_handler = logging.FileHandler(f'auth{ROLE}.log', encoding='utf-8')
-file_handler.setLevel(logging.INFO)
-
-# Create console handler
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-
-# Create a formatter
-formatter = logging.Formatter(
-    f'[%(asctime)s] [{ROLE}] %(levelname)s %(message)s'
-)
-file_handler.setFormatter(formatter)
-console_handler.setFormatter(formatter)
-
-# Add the handlers to the logger
-logger.addHandler(file_handler)
-logger.addHandler(console_handler)
-
+logger_instance = CustomLogger("Server")
+logger = logger_instance.get_logger()
 
 class AuthServer:
     def __init__(self, ip_address, port, cert_path):
+        threading.Thread.__init__(self)
+        self.running = True
         self.ipAddress = ip_address
         self.port = port
         self.CERT_PATH = cert_path
-
+        self.interface = "wlp1s0"
         # Create the SSL context here and set it as an instance variable
         self.context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
         self.context.verify_mode = ssl.CERT_REQUIRED
@@ -50,51 +28,74 @@ class AuthServer:
             keyfile=glob.glob(f'{self.CERT_PATH}/csl*.key')[0],
         )
         self.client_auth_results = {}
+        self.active_sockets = {}
 
 
     def handle_client(self, secure_client_socket, client_address):
         try:
-            # Obtain the certificate from the client
-            client_cert = secure_client_socket.getpeercert()
+            client_cert = secure_client_socket.getpeercert(binary_form=True)
             if not client_cert:
                 logger.error("Unable to get the certificate from the client", exc_info=True)
                 raise CertificateNoPresentError("Unable to get the certificate from the client")
 
-            auth = verify_cert(client_cert, "client", logger)
+            auth = verify_cert(client_cert, logger)
+            self.client_auth_results[client_address[0]] = auth
+            if auth:
+                self.active_sockets[client_address[0]] = secure_client_socket
+            else:
+                # Handle the case when authentication fails, maybe send an error message
+                secure_client_socket.send(b"Authentication failed.")
+        except Exception as e:
+            logger.error("An error occurred while handling the client.", exc_info=True)
+        # finally:
+        #     secure_client_socket.close()
 
-            # Send current server time to the client
-            serverTimeNow = f"{datetime.now()}"
-            secure_client_socket.send(serverTimeNow.encode())
-            logger.info(f"Securely sent {serverTimeNow} to {client_address}")
-            # Store the auth result in the instance variable
-            self.client_auth_results[client_address] = auth
 
-        finally:
-            # Close the connection to the client
-            secure_client_socket.close()
+    def get_secure_socket(self, client_address):
+        return self.active_sockets.get(client_address)
 
     def get_client_auth_result(self, client_address):
         return self.client_auth_results.get(client_address, None)
 
     def start_server(self):
-        # Create a server socket
-        serverSocket = socket.socket()
-        serverSocket.bind((self.ipAddress, self.port))
+        if is_ipv4(self.ipAddress):
+            self.serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.serverSocket.bind((self.ipAddress, self.port))
+        elif is_ipv6(self.ipAddress):
+            self.serverSocket = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+            scope_id = socket.if_nametoindex(self.interface)
+            self.serverSocket.bind((self.ipAddress, int(self.port), 0, scope_id))
+        else:
+            raise ValueError("Invalid IP address")
 
-        # Listen for incoming connections
-        serverSocket.listen()
+        self.serverSocket.listen()
+        self.serverSocket.settimeout(60)  # timeout of 60 seconds
         logger.info("Server listening")
 
-        while True:
-            # Keep accepting connections from clients
-            (client_connection, client_address) = serverSocket.accept()
+        while self.running:
+            try:
+                client_connection, client_address = self.serverSocket.accept()
+                secure_client_socket = self.context.wrap_socket(client_connection, server_side=True)
+                threading.Thread(target=self.handle_client, args=(secure_client_socket, client_address)).start()
+            except socket.timeout:  # In case we add a timeout later.
+                continue
+            except Exception as e:
+                if self.running:
+                    logger.error("Unexpected error in server loop.", exc_info=True)
 
-            # Make the socket connection to the clients secure through SSLSocket
-            secure_client_socket = self.context.wrap_socket(client_connection, server_side=True)
-
-            # Start a new thread to handle the client
-            client_thread = threading.Thread(target=self.handle_client, args=(secure_client_socket, client_address))
-            client_thread.start()
+    def stop_server(self):
+        self.running = False
+        if is_ipv4(self.ipAddress):
+            serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            serverSocket.bind((self.ipAddress, self.port))
+        elif is_ipv6(self.ipAddress):
+            serverSocket = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+            scope_id = socket.if_nametoindex(self.interface)
+            serverSocket.bind((self.ipAddress, int(self.port), 0, scope_id))
+        if hasattr(self, "serverSocket"):
+            self.serverSocket.close()
+            for sock in auth_server.active_sockets.values():
+                sock.close()
 
 if __name__ == "__main__":
     # IP address and the port number of the server

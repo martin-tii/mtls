@@ -1,36 +1,14 @@
 import socket
 import ssl
 import sys
-import logging
 sys.path.insert(0, '../')
 from tools.verification_tools import *
+from tools.custom_logger import CustomLogger
 import glob
 
-ROLE="Client"
 
-
-# Create a custom logger
-logger = logging.getLogger(f"Auth{ROLE}")
-logger.setLevel(logging.INFO)
-
-# Create file handler
-file_handler = logging.FileHandler(f'auth{ROLE}.log', encoding='utf-8')
-file_handler.setLevel(logging.INFO)
-
-# Create console handler
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-
-# Create a formatter
-formatter = logging.Formatter(
-    f'[%(asctime)s] [{ROLE}] %(levelname)s %(message)s'
-)
-file_handler.setFormatter(formatter)
-console_handler.setFormatter(formatter)
-
-# Add the handlers to the logger
-logger.addHandler(file_handler)
-logger.addHandler(console_handler)
+logger_instance = CustomLogger("Client")
+logger = logger_instance.get_logger()
 
 
 
@@ -39,6 +17,8 @@ class AuthClient:
         self.sslServerIP = server_ip
         self.sslServerPort = server_port
         self.CERT_PATH = cert_path
+        self.interface = "wlp1s0"
+        self.secure_client_socket = None
 
     def establish_connection(self):
         # Create an SSL context
@@ -48,41 +28,63 @@ class AuthClient:
         # Uncomment to enable Certificate Revocation List (CRL) check
         # context.verify_flags = ssl.VERIFY_CRL_CHECK_LEAF
 
-
         context.load_verify_locations(glob.glob(f'{self.CERT_PATH}/ca.crt')[0])
         context.load_cert_chain(
             certfile=glob.glob(f'{self.CERT_PATH}/csl*.crt')[0],
             keyfile=glob.glob(f'{self.CERT_PATH}/csl*.key')[0],
         )
 
-        # Create a client socket
-        clientSocket = socket.socket()
+        # Detect if the server IP is IPv4 or IPv6 and create a socket accordingly
+        if ":" in self.sslServerIP:
+            clientSocket = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+        else:
+            clientSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
         # Make the client socket suitable for secure communication
-        secureClientSocket = context.wrap_socket(clientSocket)
-
+        self.secure_client_socket = context.wrap_socket(clientSocket)
         try:
-            self.connection(secureClientSocket)
-        finally:
-            # Close the socket
-            secureClientSocket.close()
+            result = self.connection(self.secure_client_socket)
+            if result['authenticated']:
+                return result
+        except Exception as e:
+            logger.error("Define better this exception.", exc_info=True)
+        # finally:
+        #     # Close the socket
+        #     secureClientSocket.close()
 
     def connection(self, secureClientSocket):
-        # Connect to the server
-        secureClientSocket.connect((self.sslServerIP, self.sslServerPort))
+        result = {
+            'IP': self.sslServerIP,
+            'authenticated': False
+        }
 
-        # Obtain the server certificate
-        server_cert = secureClientSocket.getpeercert()
+        try:
+            self.to_validate(secureClientSocket, result)
+        except Exception as e:
+            logger.error("An error occurred during the connection process.", exc_info=True)
+
+        finally:
+            return result
+
+    def to_validate(self, secureClientSocket, result):
+        # If the IP is a link-local IPv6 address, connect it with the interface index
+        if self.sslServerIP.startswith("fe80"):
+            secureClientSocket.connect(
+                (self.sslServerIP, self.sslServerPort, 0, socket.if_nametoindex(self.interface)))
+        else:
+            secureClientSocket.connect((self.sslServerIP, self.sslServerPort))
+
+        server_cert = secureClientSocket.getpeercert(binary_form=True)
         if not server_cert:
             logger.error("Unable to get the server certificate", exc_info=True)
             raise CertificateNoPresentError("Unable to get the server certificate")
 
-        auth = verify_cert(server_cert, "server", logger)
+        result['authenticated'] = verify_cert(server_cert, logger)
 
-        # Safe to proceed with the communication
-        msgReceived = secureClientSocket.recv(1024)
-        logger.info(f"Secure communication received from server: {msgReceived.decode()}")
-        return auth
+        # # Safe to proceed with the communication, even if the certificate is not authenticated
+        # msgReceived = secureClientSocket.recv(1024)
+        # logger.info(f"Secure communication received from server: {msgReceived.decode()}")
+
 
 if __name__ == "__main__":
     # IP address and the port number of the server
@@ -92,3 +94,6 @@ if __name__ == "__main__":
 
     auth_client = AuthClient(sslServerIP, sslServerPort, CERT_PATH)
     auth_client.establish_connection()
+
+
+

@@ -4,15 +4,45 @@ import sys
 import os
 import time
 import shutil
+import queue
+import socket
+from .custom_logger import CustomLogger
+
+logger_instance = CustomLogger("utils")
+logger = logger_instance.get_logger()
+
+class UniqueQueue:
+    def __init__(self):
+        self._queue = queue.Queue()
+        self._seen = set()
+
+    def put(self, item):
+        if item not in self._seen:
+            self._queue.put(item)
+            self._seen.add(item)
+
+    def get(self, *args, **kwargs):
+        item = self._queue.get(*args, **kwargs)
+        self._seen.remove(item)
+        return item
+
+    def empty(self):
+        return self._queue.empty()
 
 
 def is_wpa_supplicant_running():
     try:
-        subprocess.check_output(['pgrep', 'wpa_supplicant'])
-
-        return True
-    except subprocess.CalledProcessError:
+        # Running the command and decoding the output
+        output = subprocess.check_output(['ps', 'ax']).decode('utf-8')
+        # Check for wpa_supplicant in the output
+        processes = [line for line in output.splitlines() if 'wpa_supplicant' in line]
+        # Filter out any lines containing 'grep'
+        processes = [proc for proc in processes if 'grep' not in proc]
+        return len(processes) > 0
+    except Exception as e:
+        # Handle exceptions based on your requirements
         return False
+
 
 def run_wpa_supplicant(wifidev):
     '''
@@ -21,7 +51,7 @@ def run_wpa_supplicant(wifidev):
     '''
     conf_file = "/var/run/wpa_supplicant-11s.conf"
     log_file = "/tmp/wpa_supplicant_11s.log"
-    shutil.copy("wpa_supplicant-11s.conf", conf_file) # this is only for testing
+    shutil.copy("tools/wpa_supplicant-11s.conf", conf_file) # this is only for testing
 
     # Build the command with all the arguments
     command = [
@@ -38,11 +68,11 @@ def run_wpa_supplicant(wifidev):
         # Run the wpa_supplicant command as a subprocess
         result = subprocess.run(command, check=True)
         if result.returncode != 0:
-            print(f"Error executing command: {result.args}. Return code: {result.returncode}")
+            logger.info(f"Error executing command: {result.args}. Return code: {result.returncode}")
         else:
-            print("wpa_supplicant process started successfully.")
+            logger.info("wpa_supplicant process started successfully.")
     except subprocess.CalledProcessError as e:
-        print(f"Error starting wpa_supplicant process: {e}")
+        logger.info(f"Error starting wpa_supplicant process: {e}")
 
 def mesh_service():
     # Check if mesh provisioning is done
@@ -50,12 +80,12 @@ def mesh_service():
     if os.path.exists("/opt/S9011sMesh"):
         # Start Mesh service
         try:
-            print("starting 11s mesh service")
+            logger.info("starting 11s mesh service")
             result = subprocess.run(["/opt/S9011sMesh", "start"], check=True, capture_output=True, text=True)
             time.sleep(2)
         except subprocess.CalledProcessError as e:
-            print(f"Error executing command: {e.cmd}. Return code: {e.returncode}")
-            print(f"Error output: {e.stderr}")
+            logger.info(f"Error executing command: {e.cmd}. Return code: {e.returncode}")
+            logger.info(f"Error output: {e.stderr}")
 
 # Call the function
 
@@ -136,7 +166,6 @@ def batman_exec(routing_algo, wifidev, ip_address, netmask):
         print(f"Error: {e}")
 
 
-# TODO Rename this here and in `run_batman_adv_commands`
 def run_batman(wifidev, ip_address, netmask):
     # Run the batctl if add command
     subprocess.run(["batctl", "if", "add", wifidev], check=True)
@@ -192,14 +221,14 @@ def mac_to_ipv6(mac_address):
 
 
 def get_mac_addr(EXPECTED_INTERFACE):
-    '''
+    """
     got it from common/tools/field_test_logger/wifi_info.py
-    '''
+    """
     try:
         with open(f"/sys/class/net/{EXPECTED_INTERFACE}/address", 'r') as f:
             value = f.readline()
             return value.strip()
-    except:
+    except Exception:
         return "NaN"
 
 
@@ -210,3 +239,21 @@ def set_ipv6(interface, ipv6):
         print(result.stdout)
     except subprocess.CalledProcessError as e:
         print(f"Command failed with error: {e.stderr}")
+
+def is_ipv4(ip):
+    try:
+        socket.inet_pton(socket.AF_INET, ip)
+        return True
+    except socket.error:
+        return False
+
+def is_ipv6(ip):
+    try:
+        socket.inet_pton(socket.AF_INET6, ip)
+        return True
+    except socket.error:
+        return False
+
+def generate_session_key():
+    rand = os.urandom(32)
+    return int.from_bytes(rand, 'big')
