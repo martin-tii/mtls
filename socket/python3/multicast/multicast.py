@@ -19,6 +19,7 @@ class MulticastHandler:
         self.multicast_group = multicast_group
         self.port = port
         self.logger = self._setup_logger()
+        self.excluded = [get_mac_addr("wlp1s0"), get_mac_addr("wlp1s0") + '_server']
 
     def _setup_logger(self):
         logger_instance = CustomLogger("multicast")
@@ -35,6 +36,7 @@ class MulticastHandler:
             sock.sendto(json.dumps(message).encode('utf-8'), (self.multicast_group, self.port))
 
     def receive_multicast(self):
+
         with socket.socket(socket.AF_INET6, socket.SOCK_DGRAM) as sock:
             sock.bind(('', self.port))
 
@@ -46,10 +48,10 @@ class MulticastHandler:
             while True:
                 data, address = sock.recvfrom(1024)
                 decoded_data = json.loads(data.decode())
-                self.logger.info(f'Received data {decoded_data} from {address}')
-
-                if 'mac_address' in decoded_data:
-                    self.queue.put(("MULTICAST", decoded_data['mac_address']))
+                if decoded_data['mac_address'] not in self.excluded:
+                    self.logger.info(f'Received data {decoded_data} from {address}')
+                    if 'mac_address' in decoded_data:
+                        self.queue.put(("MULTICAST", decoded_data['mac_address']))
 
     def multicast_message(self):
         self.receive_multicast()

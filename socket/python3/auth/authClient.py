@@ -4,21 +4,31 @@ import sys
 sys.path.insert(0, '../')
 from tools.verification_tools import *
 from tools.custom_logger import CustomLogger
+from tools.utils import mac_to_ipv6
 import glob
+import random
+import time
 
+MAX_RETRIES = 5
+MIN_WAIT_TIME = 1  # seconds
+MAX_WAIT_TIME = 3  # seconds
 
-logger_instance = CustomLogger("Client")
-logger = logger_instance.get_logger()
 
 
 
 class AuthClient:
-    def __init__(self, server_ip, server_port, cert_path):
-        self.sslServerIP = server_ip
+    def __init__(self, server_mac, server_port, cert_path):
+        self.sslServerIP = mac_to_ipv6(server_mac)
         self.sslServerPort = server_port
         self.CERT_PATH = cert_path
         self.interface = "wlp1s0"
         self.secure_client_socket = None
+        self.logger = self._setup_logger()
+
+    @staticmethod
+    def _setup_logger():
+        logger_instance = CustomLogger("authClient")
+        return logger_instance.get_logger()
 
     def establish_connection(self):
         # Create an SSL context
@@ -47,7 +57,7 @@ class AuthClient:
             if result['authenticated']:
                 return result
         except Exception as e:
-            logger.error("Define better this exception.", exc_info=True)
+            self.logger.error("Define better this exception.", exc_info=True)
         # finally:
         #     # Close the socket
         #     secureClientSocket.close()
@@ -61,25 +71,38 @@ class AuthClient:
         try:
             self.to_validate(secureClientSocket, result)
         except Exception as e:
-            logger.error("An error occurred during the connection process.", exc_info=True)
+            self.logger.error("An error occurred during the connection process.", exc_info=True)
 
         finally:
             return result
 
     def to_validate(self, secureClientSocket, result):
         # If the IP is a link-local IPv6 address, connect it with the interface index
-        if self.sslServerIP.startswith("fe80"):
-            secureClientSocket.connect(
-                (self.sslServerIP, self.sslServerPort, 0, socket.if_nametoindex(self.interface)))
-        else:
-            secureClientSocket.connect((self.sslServerIP, self.sslServerPort))
+        retries = 0
+        while retries < MAX_RETRIES:
+            try:
+                if self.sslServerIP.startswith("fe80"):
+                    secureClientSocket.connect(
+                        (self.sslServerIP, self.sslServerPort, 0, socket.if_nametoindex(self.interface)))
+                else:
+                    secureClientSocket.connect((self.sslServerIP, self.sslServerPort))
+                break  # break out of loop if connection is successful
+            except ConnectionRefusedError:
+                retries += 1
+                if retries < MAX_RETRIES:
+                    wait_time = random.uniform(MIN_WAIT_TIME, MAX_WAIT_TIME)
+                    self.logger.info(f"Connection refused. Retrying in {wait_time:.2f} seconds...")
+                    time.sleep(wait_time)
+                else:
+                    self.logger.error("Exceeded maximum retry attempts. Unable to connect to server.")
+                    raise
 
         server_cert = secureClientSocket.getpeercert(binary_form=True)
         if not server_cert:
-            logger.error("Unable to get the server certificate", exc_info=True)
+            self.logger.error("Unable to get the server certificate", exc_info=True)
             raise CertificateNoPresentError("Unable to get the server certificate")
 
-        result['authenticated'] = verify_cert(server_cert, logger)
+        result['authenticated'] = verify_cert(server_cert, self.logger)
 
         # # Safe to proceed with the communication, even if the certificate is not authenticated
         # msgReceived = secureClientSocket.recv(1024)

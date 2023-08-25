@@ -4,29 +4,40 @@ import threading
 from multicast.multicast import MulticastHandler
 from tools.monitoring_wpa import *
 from tools.custom_logger import CustomLogger
-from tools.utils import  *
+from tools.utils import *
 import queue
+import random
 
-BEACON_TIME = 50
+BEACON_TIME = 10
 MAX_CONSECUTIVE_NOT_RECEIVED = 2
 MULTICAST_ADDRESS = 'ff02::1'
 TIMEOUT = 3 * BEACON_TIME
+
+
 class mutAuth():
-    def __init__(self, in_queue, out_queue):
+    def __init__(self, in_queue, out_queue, shutdown_event):
         self.meshiface = "wlp1s0"
         self.mymac = get_mac_addr(self.meshiface)
         self.ipAddress = mac_to_ipv6(self.mymac)
         self.port = 15001
         self.CERT_PATH = 'cert_generation/certificates'  # Change this to the actual path of your certificates
         self.server = False
+        self.server_event = threading.Event()
         self.wpa_supplicant_ctrl_path = f"/var/run/wpa_supplicant/{self.meshiface}"
         self.message_received = False
         self.in_queue = in_queue
         self.out_queue = out_queue
         self.logger = self._setup_logger()
         self.multicast_handler = MulticastHandler(self.in_queue, MULTICAST_ADDRESS, self.port)
+        self.stop_event = threading.Event()
+        self.sender_thread = threading.Thread(target=self._periodic_sender, args=(self.stop_event,))
+        self.shutdown_event = shutdown_event  # Add this to handle graceful shutdown
+        self.macs_in_queue = set()  # A set to keep track of MACs in the queue.
+        self.server_lock = threading.Lock()  # Lock for thread-safe access to `self.server`
+        self.is_server_running = False  # Initial value
 
-    def _setup_logger(self):
+    @staticmethod
+    def _setup_logger():
         logger_instance = CustomLogger("mutAuth")
         return logger_instance.get_logger()
 
@@ -38,23 +49,49 @@ class mutAuth():
         else:
             logger.info("wpa_supplicant process is running.")
 
-    def set_firewall(self):
+    @staticmethod
+    def set_firewall():
         apply_nft_rules()
 
-    def _periodic_sender(self,  stop_event):
-        while not stop_event.is_set():
-            self.multicast_handler.send_multicast_message(self.mymac)
+    def _setup_server_event(self):
+        with self.server_lock:
+            self.logger.info("Setting server_event")
+            self.server_event.set()
+            self.is_server_running = True
+            self.server = True  # Explicitly set this too
+
+    def _clear_server_event(self):
+        with self.server_lock:
+            self.logger.info("Clearing server_event")
+            self.server_event.clear()
+            self.is_server_running = False
+            self.server = False  # Explicitly clear this too
+
+    def _periodic_sender(self, stop_event):
+        while not stop_event.is_set() and not self.shutdown_event.is_set():
+            if self.server:
+                self.multicast_handler.send_multicast_message(f"{self.mymac}_server")
+                self._setup_server_event()  # Use the centralized method
+            else:
+                self.multicast_handler.send_multicast_message(self.mymac)
             time.sleep(BEACON_TIME)
-            self.server = True
 
     def multicast_message(self):
+        CHECK_INTERVAL = 0.1  # Check every 0.1 seconds for a new message
         last_received = time.time()
         stop_sender_event = threading.Event()
-        muthread = threading.Thread(target=self.multicast_handler.receive_multicast) #check how to close it
+        muthread = threading.Thread(target=self.multicast_handler.receive_multicast)
         muthread.start()
-        while True:
+
+        while not self.shutdown_event.is_set():  # We'll check for the shutdown signal here
             try:
                 source, message = self.in_queue.get(timeout=TIMEOUT)
+                if message.endswith("_server"):
+                    # This is a server beacon. Reset the timeout and don't attempt to become a server.
+                    self.server = False
+                    last_received = time.time()
+                elif message == self.mymac:
+                    continue
                 if source == "MULTICAST":
                     self.logger.info(f"Received MAC on multicast: {message}")
                     last_received = time.time()
@@ -62,18 +99,47 @@ class mutAuth():
                     self.logger.info("External node_connect event triggered!")
                     self.logger.info(f"Received MAC from WPA event: {message}")
                     self.multicast_handler.send_multicast_message(self.mymac)
-                self.out_queue.put((source, message))
-            except queue.Empty:  # <--
-                if time.time() - last_received > TIMEOUT:
-                    self.logger.info(f"No message received for {TIMEOUT} seconds. Acting as a server now.")
-                    sender_thread = threading.Thread(target=self._periodic_sender, args=(stop_sender_event,))
-                    sender_thread.start()
+                    last_received = time.time()  # update the last_received time here as well
+
+                # Check if the MAC is already in the queue
+                if message not in self.macs_in_queue:
+                    self.out_queue.put((source, message))
+                    self.macs_in_queue.add(message)
+
+            except queue.Empty:  # <-- Timeout event
+                if time.time() - last_received > TIMEOUT and not self.server:
+                    self.logger.info(f"No message received for {TIMEOUT} seconds. Contemplating becoming a server...")
+                    random_wait = random.uniform(0.5,
+                                                 3)  # Wait between 0.5 to 3 seconds. Random waiting to avoid race condition
+
+                    end_time = time.time() + random_wait
+                    while time.time() < end_time:
+                        try:
+                            source, message = self.in_queue.get(timeout=CHECK_INTERVAL)
+                            if message != self.mymac:
+                                last_received = time.time()  # update the last_received time
+                                # Check if the MAC is already in the queue
+                                if message not in self.macs_in_queue:
+                                    self.out_queue.put((source, message))
+                                    self.macs_in_queue.add(message)
+                                break  # break out of the waiting loop
+                        except queue.Empty:
+                            continue
+
+                    if time.time() - last_received > TIMEOUT and not self.is_server_running:
+                        try:
+                            self.logger.info("Attempting to become a server.")
+                            sender_thread = threading.Thread(target=self._periodic_sender, args=(stop_sender_event,))
+                            sender_thread.start()
+                            self._setup_server_event()  # Use the centralized method
+                            self.logger.info("Successfully became a server.")
+                        except Exception as e:
+                            self.logger.error(f"Failed to become a server. Error: {e}")
 
     def start_auth_server(self):
         auth_server = AuthServer(self.ipAddress, self.port, self.CERT_PATH)
         auth_server_thread = threading.Thread(target=auth_server.start_server)
         auth_server_thread.start()
-        self.server = True
         return auth_server_thread, auth_server
 
     def start_auth_client(self, ServerIP):
@@ -92,4 +158,13 @@ class mutAuth():
     def batman(self):
         # todo check the interface
         ipv6 = mac_to_ipv6(self.meshiface)
-        batman_exec("batman-adv", "wlp1s0", ipv6,  "/64")
+        batman_exec("batman-adv", "wlp1s0", ipv6, "/64")
+
+    def start(self):
+        # ... other starting procedures
+        self.sender_thread.start()
+
+    def stop(self):
+        # Use this method to stop the periodic sender and other threads
+        self.stop_event.set()
+        self.sender_thread.join()
