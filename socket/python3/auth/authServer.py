@@ -8,8 +8,6 @@ from tools.verification_tools import *
 from tools.custom_logger import CustomLogger
 import glob
 
-logger_instance = CustomLogger("Server")
-logger = logger_instance.get_logger()
 
 class AuthServer:
     def __init__(self, ip_address, port, cert_path):
@@ -29,16 +27,21 @@ class AuthServer:
         )
         self.client_auth_results = {}
         self.active_sockets = {}
+        self.logger = self._setup_logger()
 
+    @staticmethod
+    def _setup_logger():
+        logger_instance = CustomLogger("authServer")
+        return logger_instance.get_logger()
 
     def handle_client(self, secure_client_socket, client_address):
         try:
             client_cert = secure_client_socket.getpeercert(binary_form=True)
             if not client_cert:
-                logger.error("Unable to get the certificate from the client", exc_info=True)
+                self.logger.error("Unable to get the certificate from the client", exc_info=True)
                 raise CertificateNoPresentError("Unable to get the certificate from the client")
 
-            auth = verify_cert(client_cert, logger)
+            auth = verify_cert(client_cert, self.logger)
             self.client_auth_results[client_address[0]] = auth
             if auth:
                 self.active_sockets[client_address[0]] = secure_client_socket
@@ -46,7 +49,7 @@ class AuthServer:
                 # Handle the case when authentication fails, maybe send an error message
                 secure_client_socket.send(b"Authentication failed.")
         except Exception as e:
-            logger.error("An error occurred while handling the client.", exc_info=True)
+            self.logger.error("An error occurred while handling the client.", exc_info=True)
         # finally:
         #     secure_client_socket.close()
 
@@ -66,11 +69,12 @@ class AuthServer:
             scope_id = socket.if_nametoindex(self.interface)
             self.serverSocket.bind((self.ipAddress, int(self.port), 0, scope_id))
         else:
+            self.logger.info("Invalid IP address")
             raise ValueError("Invalid IP address")
 
         self.serverSocket.listen()
         self.serverSocket.settimeout(60)  # timeout of 60 seconds
-        logger.info("Server listening")
+        self.logger.info("Server listening")
 
         while self.running:
             try:
