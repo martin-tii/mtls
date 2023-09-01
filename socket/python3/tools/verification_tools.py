@@ -1,25 +1,33 @@
 from datetime import datetime
 import hashlib
 import OpenSSL
+from OpenSSL import crypto
+
 
 # Custom exceptions for certificate verification
 class CertificateExpiredError(Exception):
     pass
 
+
 class CertificateActivationError(Exception):
     pass
+
 
 class CertificateHostnameError(Exception):
     pass
 
+
 class CertificateIssuerError(Exception):
     pass
+
 
 class CertificateVerificationError(Exception):
     pass
 
+
 class CertificateNoPresentError(Exception):
     pass
+
 
 def verify_cert(cert, logging):
     try:
@@ -30,6 +38,7 @@ def verify_cert(cert, logging):
     except Exception as e:
         logging.error("An unexpected error occurred during certificate verification.", exc_info=True)
         return False
+
 
 def validation(cert, logging):
     # Load the DER certificate into an OpenSSL certificate object
@@ -82,6 +91,27 @@ def validation(cert, logging):
     logging.info("Certificate verification successful.")
     return True
 
+
+def _verify_certificate_chain(cert, trusted_certs, logging):
+    """
+    this function is not being used right now, because we only have one certificate (ca.crt), not a full chain (CA, Interm CA, etc)
+    but I left the code for further adaptation
+    """
+    try:
+        x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_ASN1, cert)
+        cert_pem = OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM, x509)
+
+        store = crypto.X509Store()
+        for _cert in trusted_certs:
+            store.add_cert(_cert)
+
+        store_ctx = crypto.X509StoreContext(store, x509)
+        store_ctx.verify_certificate()
+
+        return True
+    except Exception as e:
+        logging.error(f"Certificate chain verification failed: {e}", exc_info=True)
+        return False
 
 # import threading
 # myip='fe80::230:1aff:fe4f:c822'
