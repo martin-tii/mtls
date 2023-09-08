@@ -8,10 +8,18 @@ import subprocess
 import socket
 import os
 import time
+import glob
+import shutil
+
 # Constants
 REMOTE_PATH = "/tmp/request"
 if not os.path.exists(REMOTE_PATH):
     os.makedirs(REMOTE_PATH)
+
+LOCAL_PATH = "certificates/"
+if not os.path.exists(LOCAL_PATH):
+    os.makedirs(LOCAL_PATH)
+
 CUSTOM_PORT = 12345
 CSR_SCRIPT_PATH = "./generate-csr.sh"
 
@@ -56,9 +64,9 @@ def main():
         print("Error: The server is not reachable.")
         exit(1)
 
-    output = run_command(CSR_SCRIPT_PATH)
-    csr_filename = output.stdout.split("CSR generated:  ")[1].strip()
-
+    run_command(CSR_SCRIPT_PATH)
+    csr_filename = glob.glob("*.csr")[0]
+    crt = csr_filename.split(".csr")[0]+".crt"
     upload_file_to_server(csr_filename, server_ip, username)
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
@@ -70,7 +78,10 @@ def main():
         time.sleep(5)
 
         if are_files_received(csr_filename):
-            print("The CSR file and the ca.crt have been successfully received locally!")
+            print(f"The crt file ({crt}) and the ca.crt have been successfully received locally!")
+            for f in glob.glob(f"{REMOTE_PATH}/*"):
+                shutil.copy2(f, LOCAL_PATH)
+            shutil.copy2(csr_filename.split(".csr")[0]+".key", LOCAL_PATH)
         else:
             print("Failed to confirm the receipt of the CSR file and ca.crt locally.")
 

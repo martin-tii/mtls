@@ -4,7 +4,7 @@ Steps:
 1)  ssh-keygen -t ecdsa
 2) ssh-copy-id user@somedomain (to server)
 """
-#TODO: change to ntas
+# TODO: change to ntas
 import os
 import subprocess
 import socket
@@ -13,6 +13,7 @@ import time
 import shutil
 import argparse
 import sys
+
 sys.path.insert(0, '../')
 from tools.custom_logger import CustomLogger
 
@@ -23,8 +24,6 @@ logger = logger_instance.get_logger()
 csr_directory = "/tmp/request/"  # Update this with the actual path
 if not os.path.exists(csr_directory):
     os.makedirs(csr_directory)
-
-
 
 
 # Function to run a command and get its output
@@ -67,6 +66,7 @@ def generate_and_send_certificates(csr_filename, IPAddress):
     # os.remove(crt_filename)
     # os.remove(ca_crt_filename)
 
+
 # Function to handle client connection
 def handle_client(client_socket, IPaddress):
     try:
@@ -85,6 +85,7 @@ def handle_client(client_socket, IPaddress):
     except Exception as e:
         logger.error(f"Error handling client connection: {e}")
 
+
 # Function to monitor a directory for new CSR files
 def monitor_csr_directory(directory, existing_files):
     try:
@@ -96,6 +97,8 @@ def monitor_csr_directory(directory, existing_files):
             time.sleep(10)  # Adjust the interval as needed
     except Exception as e:
         logger.error(f"Error monitoring CSR directory: {e}")
+
+
 def main():
     try:
         # Parse command-line arguments
@@ -128,11 +131,6 @@ def main():
     except Exception as e:
         logger.error(f"Main loop error: {e}")
 
+
 if __name__ == "__main__":
     main()
-
-
-
-
-
-

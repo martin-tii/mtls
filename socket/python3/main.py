@@ -26,7 +26,6 @@ def manage_server(mua):
     return mua.start_auth_server()
 
 
-
 def server_sechannel(serv, client):
     rand = generate_session_key()
     secchan = SecMessageHandler(serv.get_secure_socket(client))
@@ -101,14 +100,14 @@ def main():
             wait_start = time.time()
 
 
-def stop(wpa_thread,mutAuth_tread, mua):
+def stop(wpa_thread, mutAuth_tread, mua):
     wpa_thread.join()
     mutAuth_tread.join()
     mua.stop()
 
+
 if __name__ == "__main__":
     main()
-
 
 '''
 TODO:

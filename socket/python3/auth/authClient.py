@@ -24,6 +24,7 @@ class AuthClient:
         self.interface = "wlp1s0"
         self.secure_client_socket = None
         self.logger = self._setup_logger()
+        self.ca = f'{self.CERT_PATH}/ca.crt'
 
     @staticmethod
     def _setup_logger():
@@ -38,10 +39,10 @@ class AuthClient:
         # Uncomment to enable Certificate Revocation List (CRL) check
         # context.verify_flags = ssl.VERIFY_CRL_CHECK_LEAF
 
-        context.load_verify_locations(glob.glob(f'{self.CERT_PATH}/ca.crt')[0])
+        context.load_verify_locations(glob.glob(self.ca)[0])
         context.load_cert_chain(
-            certfile=glob.glob(f'{self.CERT_PATH}/csl*.crt')[0],
-            keyfile=glob.glob(f'{self.CERT_PATH}/csl*.key')[0],
+            certfile=glob.glob(f'{self.CERT_PATH}/macsec*.crt')[0],
+            keyfile=glob.glob(f'{self.CERT_PATH}/macsec*.key')[0],
         )
 
         # Detect if the server IP is IPv4 or IPv6 and create a socket accordingly
@@ -102,7 +103,7 @@ class AuthClient:
             self.logger.error("Unable to get the server certificate", exc_info=True)
             raise CertificateNoPresentError("Unable to get the server certificate")
 
-        result['authenticated'] = verify_cert(server_cert, self.logger)
+        result['authenticated'] = verify_cert(server_cert, self.ca, self.sslServerIP, self.logger)
 
         # # Safe to proceed with the communication, even if the certificate is not authenticated
         # msgReceived = secureClientSocket.recv(1024)

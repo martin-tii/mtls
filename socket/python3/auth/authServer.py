@@ -3,6 +3,7 @@ import ssl
 import threading
 from tools.utils import is_ipv4, is_ipv6
 import sys
+
 sys.path.insert(0, '../')
 from tools.verification_tools import *
 from tools.custom_logger import CustomLogger
@@ -11,6 +12,7 @@ import glob
 logger_instance = CustomLogger("Server")
 logger = logger_instance.get_logger()
 
+
 class AuthServer:
     def __init__(self, ip_address, port, cert_path):
         threading.Thread.__init__(self)
@@ -18,18 +20,18 @@ class AuthServer:
         self.ipAddress = ip_address
         self.port = port
         self.CERT_PATH = cert_path
+        self.ca = f'{self.CERT_PATH}/ca.crt'
         self.interface = "wlp1s0"
         # Create the SSL context here and set it as an instance variable
         self.context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
         self.context.verify_mode = ssl.CERT_REQUIRED
-        self.context.load_verify_locations(glob.glob(f'{self.CERT_PATH}/ca.crt')[0])
+        self.context.load_verify_locations(glob.glob(self.ca)[0])
         self.context.load_cert_chain(
-            certfile=glob.glob(f'{self.CERT_PATH}/csl*.crt')[0],
-            keyfile=glob.glob(f'{self.CERT_PATH}/csl*.key')[0],
+            certfile=glob.glob(f'{self.CERT_PATH}/macsec*.crt')[0],
+            keyfile=glob.glob(f'{self.CERT_PATH}/macsec*.key')[0],
         )
         self.client_auth_results = {}
         self.active_sockets = {}
-
 
     def handle_client(self, secure_client_socket, client_address):
         try:
@@ -38,7 +40,7 @@ class AuthServer:
                 logger.error("Unable to get the certificate from the client", exc_info=True)
                 raise CertificateNoPresentError("Unable to get the certificate from the client")
 
-            auth = verify_cert(client_cert, logger)
+            auth = verify_cert(client_cert, self.ca, client_address[0], logger)
             self.client_auth_results[client_address[0]] = auth
             if auth:
                 self.active_sockets[client_address[0]] = secure_client_socket
@@ -49,7 +51,6 @@ class AuthServer:
             logger.error("An error occurred while handling the client.", exc_info=True)
         # finally:
         #     secure_client_socket.close()
-
 
     def get_secure_socket(self, client_address):
         return self.active_sockets.get(client_address)
@@ -96,6 +97,7 @@ class AuthServer:
             self.serverSocket.close()
             for sock in auth_server.active_sockets.values():
                 sock.close()
+
 
 if __name__ == "__main__":
     # IP address and the port number of the server

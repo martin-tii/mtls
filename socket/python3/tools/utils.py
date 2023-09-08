@@ -6,6 +6,7 @@ import time
 import shutil
 import queue
 import socket
+import ipaddress
 from .custom_logger import CustomLogger
 
 logger_instance = CustomLogger("utils")
@@ -218,6 +219,29 @@ def mac_to_ipv6(mac_address):
     mac_with_fffe = ":".join([line[:3], line[3:7], line[7:11], line[11:]])
 
     return f"fe80::{mac_with_fffe}"
+
+
+def extract_mac_from_ipv6(ipv6_address): #assuming link local address
+    # Parse and expand the IPv6 address to its full form
+    full_ipv6_address = ipaddress.IPv6Address(ipv6_address).exploded
+
+    # Extract the EUI-64 identifier from the IPv6 address
+    eui_64_parts = full_ipv6_address.split(":")[4:8]
+
+    # Join them together into a single hex string
+    eui_64_hex = "".join(eui_64_parts)
+
+    # Separate the bytes that make up the EUI-64 identifier
+    eui_64_bytes = bytes.fromhex(eui_64_hex)
+
+    # Extract the MAC address from the EUI-64 identifier
+    mac_bytes = bytearray(6)
+    mac_bytes[0] = eui_64_bytes[0] ^ 0x02  # Flip the universal/local bit
+    mac_bytes[1:3] = eui_64_bytes[1:3]
+    mac_bytes[3:5] = eui_64_bytes[5:7]
+    mac_bytes[5] = eui_64_bytes[7]
+
+    return ":".join(f"{byte:02x}" for byte in mac_bytes)
 
 
 def get_mac_addr(EXPECTED_INTERFACE):

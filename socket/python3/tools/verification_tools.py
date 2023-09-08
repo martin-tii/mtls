@@ -1,7 +1,7 @@
 from datetime import datetime
-import hashlib
 import OpenSSL
 from OpenSSL import crypto
+from .utils import extract_mac_from_ipv6
 
 
 # Custom exceptions for certificate verification
@@ -29,9 +29,13 @@ class CertificateNoPresentError(Exception):
     pass
 
 
-def verify_cert(cert, logging):
+class CertificateDifferentCN(Exception):
+    pass
+
+
+def verify_cert(cert, ca_cert, IPaddress,  logging):
     try:
-        return validation(cert, logging)
+        return validation(cert, ca_cert, IPaddress, logging)
     except (CertificateExpiredError, CertificateHostnameError, CertificateIssuerError, ValueError) as e:
         logging.error("Certificate verification failed.", exc_info=True)
         return False
@@ -40,7 +44,7 @@ def verify_cert(cert, logging):
         return False
 
 
-def validation(cert, logging):
+def validation(cert, ca_cert, IPaddress, logging):
     # Load the DER certificate into an OpenSSL certificate object
     x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_ASN1, cert)
 
@@ -61,31 +65,15 @@ def validation(cert, logging):
         logging.error("Client certificate not yet active.", exc_info=True)
         raise CertificateExpiredError("Client certificate not yet active")
 
-    # Extract the public key from the certificate
-    pub_key_der = OpenSSL.crypto.dump_publickey(OpenSSL.crypto.FILETYPE_ASN1, x509.get_pubkey())
+    if _verify_certificate_chain(cert, ca_cert, logging):
+        # Extract the public key from the certificate
+        pub_key_der = OpenSSL.crypto.dump_publickey(OpenSSL.crypto.FILETYPE_ASN1, x509.get_pubkey())
 
-    # Compute the SHA256 hash of the public key
-    hash_of_pub_key = hashlib.sha256(pub_key_der).hexdigest()
-
-    # Extract ID from the CN (assuming the format is 'csl[ID]')
-    expected_id = hash_of_pub_key[:30]  # taking the first 30 characters
-
-    # Extract the actual ID from CN
-    common_name = x509.get_subject().CN
-    actual_id = common_name[3:]  # stripping off the "csl" prefix
-
-    if actual_id != expected_id:
-        logging.error("ID in the CN does not match the hash of the public key.", exc_info=True)
-        raise ValueError("ID in the CN does not match the hash of the public key.")
-
-    # Check if the certificate is issued by a trusted CA
-    issuer = x509.get_issuer().CN
-    trusted_ca = 'TII'  # Replace this with the trusted CA's distinguished name (DN)
-    if issuer != trusted_ca:
-        logging.error("Certificate issuer is not a trusted CA", exc_info=True)
-        raise CertificateIssuerError(f"Certificate issuer '{issuer}' is not a trusted CA.")
-
-    # Optionally, you can check other certificate properties like the key usage, extended key usage, etc.
+        # Extract the actual ID from CN
+        common_name = x509.get_subject().CN
+        if common_name != extract_mac_from_ipv6(IPaddress):
+            logging.error("CN does not match the MAC Address.", exc_info=True)
+            raise CertificateDifferentCN("CN does not match the MAC Address.")
 
     # If the client certificate has passed all verifications, you can print or log a success message
     logging.info("Certificate verification successful.")
@@ -98,12 +86,18 @@ def _verify_certificate_chain(cert, trusted_certs, logging):
     but I left the code for further adaptation
     """
     try:
-        x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_ASN1, cert)
-        cert_pem = OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM, x509)
+        x509 = crypto.load_certificate(crypto.FILETYPE_ASN1, cert)
+        cert_pem = crypto.dump_certificate(crypto.FILETYPE_PEM, x509)
 
         store = crypto.X509Store()
+
+        # Check if trusted_certs is a list, if not make it a list
+        if not isinstance(trusted_certs, list):
+            trusted_certs = [trusted_certs]
+
         for _cert in trusted_certs:
-            store.add_cert(_cert)
+            cert_data = crypto.load_certificate(crypto.FILETYPE_PEM, open(_cert).read())
+            store.add_cert(cert_data)
 
         store_ctx = crypto.X509StoreContext(store, x509)
         store_ctx.verify_certificate()
@@ -112,30 +106,3 @@ def _verify_certificate_chain(cert, trusted_certs, logging):
     except Exception as e:
         logging.error(f"Certificate chain verification failed: {e}", exc_info=True)
         return False
-
-# import threading
-# myip='fe80::230:1aff:fe4f:c822'
-#
-# from auth.authServer import AuthServer
-# from secure_channel.secchannel import SecMessageHandler
-#
-# auth_server = AuthServer(myip, 15001, "cert_generation/certificates/")
-#
-# auth_server_thread = threading.Thread(target=auth_server.start_server)
-# auth_server_thread.start()
-#
-# secchan = SecMessageHandler(auth_server.get_secure_socket('fe80::230:1aff:fe4f:5b3c'))
-# receiver_thread = threading.Thread(target=secchan.receive_message).start()
-#
-#
-# import threading
-# myip='fe80::230:1aff:fe4f:5b3c'
-# serverip='fe80::230:1aff:fe4f:c822'
-# from secure_channel.secchannel import SecMessageHandler
-# from auth.authClient import AuthClient
-#
-# auth_client = AuthClient(serverip, 15001, "cert_generation/certificates/")
-#
-# a=auth_client.establish_connection()
-# secchan = SecMessageHandler(auth_client.secure_client_socket)
-# receiver_thread = threading.Thread(target=secchan.receive_message).start()

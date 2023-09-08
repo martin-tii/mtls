@@ -40,17 +40,20 @@ network_interface=${1:-wlp1s0}
 # Parse the MAC address from the network interface using ip command
 mac_address=$(ip link show $network_interface | awk '/ether/ {print $2}')
 
+id=${mac_address//:/} #mac address with no colon
+
 # Derive the IPv6 address from the MAC address (extended format)
 ipv6_address=$(mac_to_ipv6 "$mac_address")
 
 # Generate the EC private key
-openssl ecparam -name prime256v1 -genkey -noout -out example.key
+openssl ecparam -name prime256v1 -genkey -noout -out macsec_"$id".key  # for other certificates (eg ipsec) we need to verify if this exists
 
-# Generate the 256-bit ID from the fingerprint of the public key
-id=$(openssl ec -in example.key -pubout -outform DER | sha256sum | awk '{print substr($1, 1, 30)}')
+# Generate the 256-bit random number from the fingerprint of the public key
+random=$(openssl ec -in macsec_"$id".key -pubout -outform DER | sha256sum | awk '{print substr($1, 1, 30)}')
+
 
 # Derive the second IPv6 address (mesh IPv6) from the ID (extended format)
-mesh_ipv6="fe80::$(echo $id | cut -c1-4):$(echo $id | cut -c5-8):$(echo $id | cut -c9-12)"
+mesh_ipv6="fe80::$(echo "$random" | cut -c1-4):$(echo "$random" | cut -c5-8):$(echo "$random" | cut -c9-12)"
 
 
 # Create a CSR configuration file with the custom SANs
@@ -63,12 +66,7 @@ distinguished_name = dn
 req_extensions = v3_req
 
 [dn]
-C = AE
-ST = ABU DHABI
-L = ABU DHABI
-O = TII
-OU = SSRC
-CN = csl$id
+CN = $mac_address
 
 [v3_req]
 subjectAltName = @alt_names
@@ -78,11 +76,11 @@ DNS.1 = csl$id.local
 DNS.2 = cls$id.lan
 IP.1 = $ipv6_address
 IP.2 = $mesh_ipv6
-email.1 = info@tii.com
 EOF
 
 
-mv example.key csl$id.key
+
 # Create the CSR using the generated private key and the custom CSR configuration
-openssl req -new -key csl$id.key -out csl$id.csr -config csr.conf
-echo "CSR generated: " "csl$id.csr"
+openssl req -new -key macsec_"$id".key -out macsec_"$id".csr -config csr.conf
+echo "CSR generated: " "macsec_$id.csr"
+openssl req -in macsec_"$id".csr -text -noout
