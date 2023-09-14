@@ -1,7 +1,7 @@
 import socket
 import ssl
 import threading
-from tools.utils import is_ipv4, is_ipv6
+from tools.utils import *
 import sys
 
 sys.path.insert(0, '../')
@@ -22,6 +22,7 @@ class AuthServer:
         self.CERT_PATH = cert_path
         self.ca = f'{self.CERT_PATH}/ca.crt'
         self.interface = "wlp1s0"
+        self.mymac = get_mac_addr(self.interface)
         # Create the SSL context here and set it as an instance variable
         self.context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
         self.context.verify_mode = ssl.CERT_REQUIRED
@@ -32,6 +33,9 @@ class AuthServer:
         )
         self.client_auth_results = {}
         self.active_sockets = {}
+        self.client_auth_results_lock = threading.Lock()
+        self.active_sockets_lock = threading.Lock()
+
 
     def handle_client(self, secure_client_socket, client_address):
         try:
@@ -41,9 +45,16 @@ class AuthServer:
                 raise CertificateNoPresentError("Unable to get the certificate from the client")
 
             auth = verify_cert(client_cert, self.ca, client_address[0], logger)
-            self.client_auth_results[client_address[0]] = auth
+            with self.client_auth_results_lock:
+                self.client_auth_results[client_address[0]] = auth
             if auth:
-                self.active_sockets[client_address[0]] = secure_client_socket
+                with self.active_sockets_lock:
+                    self.active_sockets[client_address[0]] = secure_client_socket
+                #self.setup_macsec_mesh(secure_client_socket, client_address)
+                setup_macsec_mesh(role="primary",
+                                  secure_client_socket=secure_client_socket,
+                                  my_mac=self.mymac,
+                                  client_mac=extract_mac_from_ipv6(client_address[0]))
             else:
                 # Handle the case when authentication fails, maybe send an error message
                 secure_client_socket.send(b"Authentication failed.")
@@ -53,10 +64,12 @@ class AuthServer:
         #     secure_client_socket.close()
 
     def get_secure_socket(self, client_address):
-        return self.active_sockets.get(client_address)
+        with self.active_sockets_lock:
+            return self.active_sockets.get(client_address)
 
     def get_client_auth_result(self, client_address):
-        return self.client_auth_results.get(client_address, None)
+        with self.client_auth_results_lock:
+            return self.client_auth_results.get(client_address, None)
 
     def start_server(self):
         if is_ipv4(self.ipAddress):
@@ -97,7 +110,6 @@ class AuthServer:
             self.serverSocket.close()
             for sock in auth_server.active_sockets.values():
                 sock.close()
-
 
 if __name__ == "__main__":
     # IP address and the port number of the server

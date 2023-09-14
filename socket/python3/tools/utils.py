@@ -8,9 +8,14 @@ import queue
 import socket
 import ipaddress
 from .custom_logger import CustomLogger
+import threading
+sys.path.insert(0, '../')
+from secure_channel.secchannel import SecMessageHandler
+from macsec import macsec
 
 logger_instance = CustomLogger("utils")
 logger = logger_instance.get_logger()
+script_dir = os.path.dirname(__file__) # path to tools directory
 
 class UniqueQueue:
     def __init__(self):
@@ -131,23 +136,6 @@ def modify_conf_file(conf_file_path, new_values):
         config.write(configfile)
 
 
-def set_macsec(role, mesh_iface, key1, key2, mac_server, mac_client):
-    conf_file_path = "../macsec/variables.conf"
-    new_values = {
-        'DEFAULT': {
-            'INTERFACE': mesh_iface,
-            'STATUS': 'up',
-            'ROLE': role,
-            'KEY1': key1,
-            'KEY2': key2,
-            'MACPRIM': mac_server,
-            'MACSECO': mac_client
-        }
-    }
-
-    modify_conf_file(conf_file_path, new_values)
-
-
 def run_macsec(args):
     try:
         # Replace 'run_macsec.sh' with the actual path to your bash script
@@ -157,17 +145,17 @@ def run_macsec(args):
         print(f"Error executing the script: {e}")
         sys.exit(1)
 
-def batman_exec(routing_algo, wifidev, ip_address, netmask):
+def batman_exec(routing_algo, wifidev, ip_address, prefixlen):
     if routing_algo != "batman-adv":
         #TODO here should be OLSR
         return
     try:
-        run_batman(wifidev, ip_address, netmask)
+        run_batman(wifidev, ip_address, prefixlen)
     except subprocess.CalledProcessError as e:
         print(f"Error: {e}")
 
 
-def run_batman(wifidev, ip_address, netmask):
+def run_batman(wifidev, ip_address, prefixlen):
     # Run the batctl if add command
     subprocess.run(["batctl", "if", "add", wifidev], check=True)
 
@@ -175,9 +163,17 @@ def run_batman(wifidev, ip_address, netmask):
     # Run the ifconfig bat0 up command
     subprocess.run(["ifconfig", "bat0", "up"], check=True)
 
+    # Delete ipv6 address automatically assigned from mac
+    command = ["ip", "-6", "addr", "show", "dev", "bat0"]
+    result = subprocess.run(command, capture_output=True, text=True, check=True)
+    old_ip = result.stdout.split('inet6 ')[1].split(' ')[0]
+    print("Deleting bat0 ipv6 address automatically assigned from mac..")
+    subprocess.run(["ip", "address", "del", old_ip, "dev", "bat0"], check=True)
+
     print("bat0 ip address..")
     # Run the ifconfig bat0 <ip_address> netmask <netmask> command
-    subprocess.run(["ifconfig", "bat0", ip_address, "netmask", netmask], check=True)
+    #subprocess.run(["ifconfig", "bat0", ip_address, "netmask", netmask], check=True)
+    subprocess.run(["ip", "-6", "addr", "add", f'{ip_address}/{prefixlen}', "dev", "bat0"], check=True)
 
     print("bat0 mtu size")
     # Run the ifconfig bat0 mtu 1460 command
@@ -279,5 +275,61 @@ def is_ipv6(ip):
         return False
 
 def generate_session_key():
-    rand = os.urandom(32)
-    return int.from_bytes(rand, 'big')
+    rand = os.urandom(16)
+    #return int.from_bytes(rand, 'big')
+    return rand.hex()
+
+def read_conf_file(conf_file_path):
+    # Create a configparser object
+    config = configparser.ConfigParser()
+    # Read the configuration file
+    config.read(conf_file_path)
+    return config
+
+def get_mesh_ipv6_from_conf_file():
+    conf_file_path = f'{script_dir}/../cert_generation/csr.conf'
+    config = read_conf_file(conf_file_path)
+    return config.get('alt_names', 'IP.2')
+
+def setup_secchannel(secure_client_socket):
+    # Establish secure channel and exchange macsec key
+    my_macsec_key = generate_session_key()
+    secchan = SecMessageHandler(secure_client_socket)
+    macsec_key_q = queue.Queue()  # queue to store macsec_key from client_secchan.receive_message
+    receiver_thread = threading.Thread(target=secchan.receive_message, args=(macsec_key_q,))
+    receiver_thread.start()
+    print(f"sending random value as my macsec key: {my_macsec_key}")
+    secchan.send_message(f"macsec_key_{str(my_macsec_key)}")
+    client_macsec_key = macsec_key_q.get()
+    return secchan, my_macsec_key, client_macsec_key
+
+def setup_macsec(role, my_macsec_key, client_macsec_key, my_mac, client_mac):
+    # Setup macsec parameters according to role
+    if role == "primary":
+        key1 = my_macsec_key
+        key2 = client_macsec_key
+        mac_prim = my_mac
+        mac_seco = client_mac
+    else:
+        key1 = client_macsec_key
+        key2 = my_macsec_key
+        mac_prim = client_mac
+        mac_seco = my_mac
+    # Initialize macsec object with macsec parameters
+    macsec_obj = macsec.Macsec(role, key1, key2, mac_prim, mac_seco)
+    macsec_obj.run_macsec()  # set macsec
+
+def setup_macsec_mesh(role, secure_client_socket, my_mac, client_mac):
+    # Setup macsec and batman
+    secchan, my_macsec_key, client_macsec_key = setup_secchannel(secure_client_socket) # Establish secure channel and exchange macsec key
+    try:
+        setup_macsec(role, my_macsec_key, client_macsec_key, my_mac, client_mac) #setup macsec
+        logger.info(f'Macsec enabled with {client_mac}')
+    except Exception as e:
+        logger.error(f'Error setting up macsec with {client_mac}: {e}')
+    try:
+        batman_exec(routing_algo="batman-adv", wifidev="macsec0", ip_address=get_mesh_ipv6_from_conf_file(), prefixlen=32)  # Execute batman
+        logger.info('Batman executed')
+    except Exception as e:
+        logger.error(f'Error executing batman: {e}')
+

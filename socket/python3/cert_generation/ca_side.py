@@ -60,7 +60,7 @@ def generate_and_send_certificates(csr_filename, IPAddress):
         logger.info("Certificates sent successfully.")
     except Exception as e:
         logger.error(f"Error generating and sending certificates: {e}")
-    raise
+        raise
 
     # Clean up
     # os.remove(crt_filename)

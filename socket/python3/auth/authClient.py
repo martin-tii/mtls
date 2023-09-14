@@ -4,7 +4,7 @@ import sys
 sys.path.insert(0, '../')
 from tools.verification_tools import *
 from tools.custom_logger import CustomLogger
-from tools.utils import mac_to_ipv6
+from tools.utils import mac_to_ipv6, get_mac_addr
 import glob
 import random
 import time
@@ -25,6 +25,7 @@ class AuthClient:
         self.secure_client_socket = None
         self.logger = self._setup_logger()
         self.ca = f'{self.CERT_PATH}/ca.crt'
+        self.mymac = get_mac_addr(self.interface)
 
     @staticmethod
     def _setup_logger():

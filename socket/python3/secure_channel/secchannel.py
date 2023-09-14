@@ -1,3 +1,4 @@
+import queue
 import ssl
 import socket
 from tools.custom_logger import CustomLogger
@@ -42,7 +43,7 @@ class SecMessageHandler:
         except Exception as e:
             self.logger.error("Error sending message.", exc_info=True)
 
-    def receive_message(self):
+    def receive_message(self, macsec_key_q=queue.Queue()):
         """Continuously receive messages from the socket."""
         if not self._is_ssl_socket():
             self.logger.error("Socket is not SSL enabled.")
@@ -61,6 +62,9 @@ class SecMessageHandler:
                     self.logger.info(f"Received: {data}")
                     if self.callback:
                         self.callback(data)  # Execute the callback with the received data
+                    if "macsec_key_" in data: # if received data is the macsec key, put it in queue
+                        macsec_key = data.split('macsec_key_')[1]
+                        macsec_key_q.put(macsec_key)
 
         except socket.timeout:
             self.logger.warning("Connection timed out. Ending communication.")

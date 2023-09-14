@@ -4,6 +4,7 @@ from mutauth import mutAuth
 from tools.monitoring_wpa import WPAMonitor
 from tools.utils import *
 from secure_channel.secchannel import SecMessageHandler
+from macsec import macsec
 
 shutdown_event = threading.Event()
 
@@ -26,30 +27,21 @@ def manage_server(mua):
     return mua.start_auth_server()
 
 
-def server_sechannel(serv, client):
-    rand = generate_session_key()
-    secchan = SecMessageHandler(serv.get_secure_socket(client))
-    receiver_thread = threading.Thread(target=secchan.receive_message)
-    receiver_thread.start()
-    print(f"sending random value: {rand}")
-    secchan.send_message(str(rand))
-    return secchan, rand
-
-
 def manage_client(out_queue, mua):
     source, message = out_queue.get()
     print("------------------client ---------------------")
     time.sleep(3)
     if "_server" in message:
-        cli = mua.start_auth_client(message.split('_server')[0])
+        server_mac = message.split('_server')[0]
+    #TODO: check why client is starting even when message does not contain '_server'
     else:
-        cli = mua.start_auth_client(message)
-    cli.establish_connection()
-    client_secchan = SecMessageHandler(cli.secure_client_socket)
-    receiver_thread = threading.Thread(target=client_secchan.receive_message)
-    receiver_thread.start()
-    return client_secchan
-
+        server_mac = message
+    cli = mua.start_auth_client(server_mac)
+    cli.establish_connection() #TODO: check if secchan should be established only if server certificate is verified
+    setup_macsec_mesh(role="secondary",
+                      secure_client_socket=cli.secure_client_socket,
+                      my_mac=cli.mymac,
+                      client_mac=server_mac)
 
 def main():
     in_queue = queue.Queue()
@@ -65,6 +57,8 @@ def main():
     wpa_thread.start()
     mutAuth_tread.start()
 
+    mutAuth_start_time = time.time() #TODO: remove later (this is only for test)
+
     # Flags to prevent multiple instances of server/client
     is_server_started = False
     is_client_started = False
@@ -75,20 +69,18 @@ def main():
         # If the node should be a server and hasn't already become one
         if mua.server_event.is_set() and not is_server_started and not is_client_started:
             print("Inside server event check")
+            print("Time taken for server to start = ", time.time() - mutAuth_start_time) #TODO: remove later (this is only for test)
             server_thread, serv = manage_server(mua)
-            if serv.client_auth_results:
-                print(serv.client_auth_results)
-                for client in serv.client_auth_results:
-                    return server_sechannel(serv, client)
             is_server_started = True
             mua.server_event.clear()  # Clearing the event to prevent re-entry
 
         # If the node shouldn't be a server and hasn't already become a client
         elif not mua.server and not is_client_started and not is_server_started and time.time() - wait_start >= server_wait_time:
             print("entering as client")
-            client_secchan = manage_client(out_queue, mua)
-            macsec_key = client_secchan.set_callback(on_message_received)
-            print(macsec_key)
+            print("Time taken for client to start = ", time.time() - mutAuth_start_time) #TODO: remove later (this is only for test)
+            manage_client(out_queue, mua)
+            #macsec_key = client_secchan.set_callback(on_message_received)
+            #print('Macsec key: ', macsec_key)
             is_client_started = True
 
         # If no decision can be made, we wait for a short period
@@ -117,7 +109,7 @@ TODO:
             # bio_read() and bio_write()
             # for using DTLS with Scapy instead of a socket
 5) generate session key (with XOR)
-7) test macsec
+7) test macsec 
 8) test batman_adv implementation
 9) ipsec
 

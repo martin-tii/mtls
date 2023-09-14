@@ -1,5 +1,5 @@
 #!/bin/bash
-### This command should be executed as ./run_macsec.sh <up/down> <interface> <primary/secondary>
+### This command should be executed as ./run_macsec.sh <interface> <up/down> <encryption on/off> <primary/secondary> <key1> <key2> <mac primary> <mac secondary>
 ### up is to set the interface up
 ### primary means the first node that will be running (will get the key1
 ###
@@ -10,15 +10,14 @@ configure_mac_sec()
 
   echo "configuring MacSec"
 
-  source variables.conf
-        interface=$INTERFACE
-        status=$STATUS
-        role=$ROLE
-        key1=$KEY1
-        #key2=$(echo "$key1" | rev);
-        key2=$KEY2
-        macprim=$MACPRIM
-        macseco=$MACSECO
+  interface=$1
+  status=$2
+  encryption=$3
+  role=$4
+  key1=$5
+  key2=$6
+  macprim=$7
+  macseco=$8
 
   get_mac()
   {
@@ -29,14 +28,14 @@ configure_mac_sec()
   {
   echo "$interface"
   mac=$(get_mac "$interface")
-  ip link del link "$interface" macsec0 type macsec encrypt on
+  ip link del link "$interface" macsec0 type macsec encrypt "$encryption"
   }
 
   up()
   {
   echo "here"
   ip link set "$interface" up
-  ip link add link "$interface" macsec0 type macsec encrypt on
+  ip link add link "$interface" macsec0 type macsec encrypt "$encryption"
 
   if [[ "$role" == "primary" ]]
   then
@@ -49,9 +48,9 @@ configure_mac_sec()
     ip macsec add macsec0 rx port 1 address "$macprim" sa 0 pn 1 on key 02 "$key1"
   fi
   ip link set macsec0 up
-  ipa=$(( ( RANDOM % 100 )  + 1 ))
-  ip addr add 10.10.10.$ipa/24 dev macsec0
-  echo "IP: 10.10.10.$ipa/24"
+  #ipa=$(( ( RANDOM % 100 )  + 1 ))
+  #ip addr add 10.10.10.$ipa/24 dev macsec0
+  #echo "IP: 10.10.10.$ipa/24"
   }
 
 
@@ -66,5 +65,5 @@ configure_mac_sec()
 }
 
 
-configure_mac_sec
+configure_mac_sec $1 $2 $3 $4 $5 $6 $7 $8
 ip macsec show

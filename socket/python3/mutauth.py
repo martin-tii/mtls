@@ -125,7 +125,6 @@ class mutAuth():
                                 break  # break out of the waiting loop
                         except queue.Empty:
                             continue
-
                     if time.time() - last_received > TIMEOUT and not self.is_server_running:
                         try:
                             self.logger.info("Attempting to become a server.")
@@ -145,6 +144,7 @@ class mutAuth():
     def start_auth_client(self, ServerIP):
         return AuthClient(ServerIP, self.port, self.CERT_PATH)
 
+    """
     def macsec(self, mac_client, key1, key2):
         if self.server:
             role = "primary"
@@ -154,7 +154,7 @@ class mutAuth():
             set_macsec(role, self.meshiface, key2, key1, mac_client, self.mymac)
         # Call the function to run the bash script
         run_macsec(["up", self.meshiface, role])
-
+    """
     def batman(self):
         # todo check the interface
         ipv6 = mac_to_ipv6(self.meshiface)
