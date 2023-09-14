@@ -322,6 +322,14 @@ def setup_macsec(role, my_macsec_key, client_macsec_key, my_mac, client_mac):
 def setup_macsec_mesh(role, secure_client_socket, my_mac, client_mac):
     # Setup macsec and batman
     secchan, my_macsec_key, client_macsec_key = setup_secchannel(secure_client_socket) # Establish secure channel and exchange macsec key
-    setup_macsec(role, my_macsec_key, client_macsec_key, my_mac, client_mac) #setup macsec
-    batman_exec(routing_algo="batman-adv", wifidev="macsec0", ip_address=get_mesh_ipv6_from_conf_file(), prefixlen=32)  # Execute batman
+    try:
+        setup_macsec(role, my_macsec_key, client_macsec_key, my_mac, client_mac) #setup macsec
+        logger.info(f'Macsec enabled with {client_mac}')
+    except Exception as e:
+        logger.error(f'Error setting up macsec with {client_mac}: {e}')
+    try:
+        batman_exec(routing_algo="batman-adv", wifidev="macsec0", ip_address=get_mesh_ipv6_from_conf_file(), prefixlen=32)  # Execute batman
+        logger.info('Batman executed')
+    except Exception as e:
+        logger.error(f'Error executing batman: {e}')
 

@@ -26,17 +26,6 @@ def manage_server(mua):
     print("------------------server ---------------------")
     return mua.start_auth_server()
 
-"""
-def server_sechannel(serv, client):
-    rand = generate_session_key()
-    secchan = SecMessageHandler(serv.get_secure_socket(client))
-    receiver_thread = threading.Thread(target=secchan.receive_message)
-    receiver_thread.start()
-    print(f"sending random value: {rand}")
-    secchan.send_message(str(rand))
-    return secchan, rand
-"""
-
 
 def manage_client(out_queue, mua):
     source, message = out_queue.get()
@@ -53,27 +42,6 @@ def manage_client(out_queue, mua):
                       secure_client_socket=cli.secure_client_socket,
                       my_mac=cli.mymac,
                       client_mac=server_mac)
-    """
-    client_secchan = SecMessageHandler(cli.secure_client_socket)
-    macsec_key_q = queue.Queue() # queue to store macsec_key from client_secchan.receive_message
-    receiver_thread = threading.Thread(target=client_secchan.receive_message, args=(macsec_key_q, ))
-    receiver_thread.start()
-    my_macsec_key = generate_session_key()
-    print(f"sending random value as my macsec key: {my_macsec_key}")
-    client_secchan.send_message(f"macsec_key_{str(my_macsec_key)}")
-    server_macsec_key = macsec_key_q.get()
-    print('Server macsec key: ', server_macsec_key)
-    # Initialize macsec object with macsec parameters
-    macsec_obj = macsec.Macsec(role="secondary",
-                               key1=server_macsec_key,
-                               key2=my_macsec_key,
-                               mac_prim=server_mac,
-                               mac_seco=cli.mymac)
-    macsec_obj.run_macsec()  # set macsec
-    batman_exec(routing_algo="batman-adv", wifidev="macsec0", ip_address=get_mesh_ipv6_from_conf_file(), prefixlen=32) # Execute batman
-
-    return client_secchan
-    """
 
 def main():
     in_queue = queue.Queue()
@@ -103,15 +71,6 @@ def main():
             print("Inside server event check")
             print("Time taken for server to start = ", time.time() - mutAuth_start_time) #TODO: remove later (this is only for test)
             server_thread, serv = manage_server(mua)
-            # TODO trigger this when client thread ends -> not sure if we should call it from AuthServer
-            """
-            time.sleep(15)
-            print("Debug: client_auth_results: ", serv.client_auth_results)
-            if serv.client_auth_results:
-                print(serv.client_auth_results)
-                for client in serv.client_auth_results:
-                    return server_sechannel(serv, client)
-            """
             is_server_started = True
             mua.server_event.clear()  # Clearing the event to prevent re-entry
 
@@ -150,7 +109,7 @@ TODO:
             # bio_read() and bio_write()
             # for using DTLS with Scapy instead of a socket
 5) generate session key (with XOR)
-7) test macsec
+7) test macsec 
 8) test batman_adv implementation
 9) ipsec
 

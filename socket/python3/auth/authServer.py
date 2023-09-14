@@ -47,7 +47,6 @@ class AuthServer:
             auth = verify_cert(client_cert, self.ca, client_address[0], logger)
             with self.client_auth_results_lock:
                 self.client_auth_results[client_address[0]] = auth
-            print("Debug: client_auth_results: ", self.client_auth_results)
             if auth:
                 with self.active_sockets_lock:
                     self.active_sockets[client_address[0]] = secure_client_socket
