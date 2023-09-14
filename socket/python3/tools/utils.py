@@ -275,7 +275,7 @@ def is_ipv6(ip):
         return False
 
 def generate_session_key():
-    rand = os.urandom(16)
+    rand = os.urandom(32)
     #return int.from_bytes(rand, 'big')
     return rand.hex()
 
