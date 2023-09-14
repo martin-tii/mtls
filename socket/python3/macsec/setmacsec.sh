@@ -35,7 +35,7 @@ configure_mac_sec()
   {
   echo "here"
   ip link set "$interface" up
-  ip link add link "$interface" macsec0 type macsec encrypt "$encryption"
+  ip link add link "$interface" macsec0 type macsec encrypt "$encryption" cipher gcm-aes-256
 
   if [[ "$role" == "primary" ]]
   then
