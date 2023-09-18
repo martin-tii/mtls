@@ -8,10 +8,7 @@ import queue
 import socket
 import ipaddress
 from .custom_logger import CustomLogger
-import threading
 sys.path.insert(0, '../')
-from secure_channel.secchannel import SecMessageHandler
-from macsec import macsec
 
 logger_instance = CustomLogger("utils")
 logger = logger_instance.get_logger()
@@ -134,16 +131,6 @@ def modify_conf_file(conf_file_path, new_values):
 
     with open(conf_file_path, 'w') as configfile:
         config.write(configfile)
-
-
-def run_macsec(args):
-    try:
-        # Replace 'run_macsec.sh' with the actual path to your bash script
-        script_path = './run_macsec.sh'
-        subprocess.run([script_path] + args, check=True)
-    except subprocess.CalledProcessError as e:
-        print(f"Error executing the script: {e}")
-        sys.exit(1)
 
 def batman_exec(routing_algo, wifidev, ip_address, prefixlen):
     if routing_algo != "batman-adv":
@@ -290,25 +277,3 @@ def get_mesh_ipv6_from_conf_file():
     conf_file_path = f'{script_dir}/../cert_generation/csr.conf'
     config = read_conf_file(conf_file_path)
     return config.get('alt_names', 'IP.2')
-
-def setup_secchannel(secure_client_socket, macsec_obj):
-    # Establish secure channel and exchange macsec key
-    secchan = SecMessageHandler(secure_client_socket)
-    macsec_key_q = queue.Queue()  # queue to store macsec_key from client_secchan.receive_message
-    receiver_thread = threading.Thread(target=secchan.receive_message, args=(macsec_key_q,))
-    receiver_thread.start()
-    print(f"Sending my macsec key: {macsec_obj.my_macsec_key}")
-    secchan.send_message(f"macsec_key_{str(macsec_obj.my_macsec_key)}")
-    client_macsec_key = macsec_key_q.get()
-    return secchan, client_macsec_key
-
-def setup_macsec_mesh(macsec_obj, secure_client_socket, client_mac):
-    # Setup macsec and batman
-    secchan, client_macsec_key = setup_secchannel(secure_client_socket, macsec_obj) # Establish secure channel and exchange macsec key
-    macsec_obj.set_macsec_rx(client_mac,  client_macsec_key) # setup macsec rx channel
-    try:
-        batman_exec(routing_algo="batman-adv", wifidev="macsec0", ip_address=get_mesh_ipv6_from_conf_file(), prefixlen=32)  # Execute batman
-        logger.info('Batman executed')
-    except Exception as e:
-        logger.error(f'Error executing batman: {e}')
-
