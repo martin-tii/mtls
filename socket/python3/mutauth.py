@@ -8,7 +8,7 @@ from tools.utils import *
 from macsec import macsec
 import queue
 import random
-
+from secure_channel.secchannel import SecMessageHandler
 BEACON_TIME = 10
 MAX_CONSECUTIVE_NOT_RECEIVED = 2
 MULTICAST_ADDRESS = 'ff02::1'
@@ -138,7 +138,7 @@ class mutAuth():
                             self.logger.error(f"Failed to become a server. Error: {e}")
 
     def start_auth_server(self):
-        auth_server = AuthServer(self.ipAddress, self.port, self.CERT_PATH, self.macsec_obj)
+        auth_server = AuthServer(self.ipAddress, self.port, self.CERT_PATH, self)
         auth_server_thread = threading.Thread(target=auth_server.start_server)
         auth_server_thread.start()
         return auth_server_thread, auth_server
@@ -146,22 +146,32 @@ class mutAuth():
     def start_auth_client(self, ServerIP):
         return AuthClient(ServerIP, self.port, self.CERT_PATH)
 
-    """
-    def macsec(self, mac_client, key1, key2):
-        if self.server:
-            role = "primary"
-            set_macsec(role, self.meshiface, key1, key2, self.mymac, mac_client)
-        else:
-            role = "secondary"
-            set_macsec(role, self.meshiface, key2, key1, mac_client, self.mymac)
-        # Call the function to run the bash script
-        run_macsec(["up", self.meshiface, role])
-    """
     def batman(self):
         # todo check the interface
-        ipv6 = mac_to_ipv6(self.meshiface)
-        batman_exec("batman-adv", "wlp1s0", ipv6, "/64")
+        #ipv6 = mac_to_ipv6(self.meshiface)
+        ipv6 = get_mesh_ipv6_from_conf_file()
+        try:
+            batman_exec("batman-adv", "macsec0", ipv6, 32)
+            logger.info('Batman executed')
+        except Exception as e:
+            logger.error(f'Error executing batman: {e}')
+            sys.exit(1)
 
+    def setup_secchannel(self, secure_client_socket):
+        # Establish secure channel and exchange macsec key
+        secchan = SecMessageHandler(secure_client_socket)
+        macsec_key_q = queue.Queue()  # queue to store macsec_key from client_secchan.receive_message
+        receiver_thread = threading.Thread(target=secchan.receive_message, args=(macsec_key_q,))
+        receiver_thread.start()
+        print(f"Sending my macsec key: {self.macsec_obj.my_macsec_key}")
+        secchan.send_message(f"macsec_key_{str(self.macsec_obj.my_macsec_key)}")
+        client_macsec_key = macsec_key_q.get()
+        return secchan, client_macsec_key
+
+    def setup_macsec(self, secure_client_socket, client_mac):
+        # Setup macsec and batman
+        secchan, client_macsec_key = self.setup_secchannel(secure_client_socket)  # Establish secure channel and exchange macsec key
+        self.macsec_obj.set_macsec_rx(client_mac, client_macsec_key)  # setup macsec rx channel
     def start(self):
         # ... other starting procedures
         self.sender_thread.start()

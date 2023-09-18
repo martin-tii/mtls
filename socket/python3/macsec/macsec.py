@@ -31,6 +31,7 @@ class Macsec:
             self.logger.info('Macsec tx channel set')
         except Exception as e:
             self.logger.error(f'Error setting up macsec tx channel: {e}')
+            sys.exit(1)
 
     def set_macsec_rx(self, client_mac, client_macsec_key):
         # Adds a rx channel with client_mac, with key id = client mac without ":"
