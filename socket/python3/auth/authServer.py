@@ -14,7 +14,7 @@ logger = logger_instance.get_logger()
 
 
 class AuthServer:
-    def __init__(self, ip_address, port, cert_path):
+    def __init__(self, ip_address, port, cert_path, macsec_obj):
         threading.Thread.__init__(self)
         self.running = True
         self.ipAddress = ip_address
@@ -35,7 +35,7 @@ class AuthServer:
         self.active_sockets = {}
         self.client_auth_results_lock = threading.Lock()
         self.active_sockets_lock = threading.Lock()
-
+        self.macsec_obj = macsec_obj
 
     def handle_client(self, secure_client_socket, client_address):
         try:
@@ -51,9 +51,8 @@ class AuthServer:
                 with self.active_sockets_lock:
                     self.active_sockets[client_address[0]] = secure_client_socket
                 #self.setup_macsec_mesh(secure_client_socket, client_address)
-                setup_macsec_mesh(role="primary",
+                setup_macsec_mesh(macsec_obj=self.macsec_obj,
                                   secure_client_socket=secure_client_socket,
-                                  my_mac=self.mymac,
                                   client_mac=extract_mac_from_ipv6(client_address[0]))
             else:
                 # Handle the case when authentication fails, maybe send an error message

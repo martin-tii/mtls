@@ -5,6 +5,7 @@ from multicast.multicast import MulticastHandler
 from tools.monitoring_wpa import *
 from tools.custom_logger import CustomLogger
 from tools.utils import *
+from macsec import macsec
 import queue
 import random
 
@@ -35,6 +36,7 @@ class mutAuth():
         self.macs_in_queue = set()  # A set to keep track of MACs in the queue.
         self.server_lock = threading.Lock()  # Lock for thread-safe access to `self.server`
         self.is_server_running = False  # Initial value
+        self.macsec_obj = macsec.Macsec(my_macsec_key=generate_session_key())  # Initialize macsec object
 
     @staticmethod
     def _setup_logger():
@@ -136,7 +138,7 @@ class mutAuth():
                             self.logger.error(f"Failed to become a server. Error: {e}")
 
     def start_auth_server(self):
-        auth_server = AuthServer(self.ipAddress, self.port, self.CERT_PATH)
+        auth_server = AuthServer(self.ipAddress, self.port, self.CERT_PATH, self.macsec_obj)
         auth_server_thread = threading.Thread(target=auth_server.start_server)
         auth_server_thread.start()
         return auth_server_thread, auth_server
