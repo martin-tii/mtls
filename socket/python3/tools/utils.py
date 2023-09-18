@@ -291,42 +291,21 @@ def get_mesh_ipv6_from_conf_file():
     config = read_conf_file(conf_file_path)
     return config.get('alt_names', 'IP.2')
 
-def setup_secchannel(secure_client_socket):
+def setup_secchannel(secure_client_socket, macsec_obj):
     # Establish secure channel and exchange macsec key
-    my_macsec_key = generate_session_key()
     secchan = SecMessageHandler(secure_client_socket)
     macsec_key_q = queue.Queue()  # queue to store macsec_key from client_secchan.receive_message
     receiver_thread = threading.Thread(target=secchan.receive_message, args=(macsec_key_q,))
     receiver_thread.start()
-    print(f"sending random value as my macsec key: {my_macsec_key}")
-    secchan.send_message(f"macsec_key_{str(my_macsec_key)}")
+    print(f"Sending my macsec key: {macsec_obj.my_macsec_key}")
+    secchan.send_message(f"macsec_key_{str(macsec_obj.my_macsec_key)}")
     client_macsec_key = macsec_key_q.get()
-    return secchan, my_macsec_key, client_macsec_key
+    return secchan, client_macsec_key
 
-def setup_macsec(role, my_macsec_key, client_macsec_key, my_mac, client_mac):
-    # Setup macsec parameters according to role
-    if role == "primary":
-        key1 = my_macsec_key
-        key2 = client_macsec_key
-        mac_prim = my_mac
-        mac_seco = client_mac
-    else:
-        key1 = client_macsec_key
-        key2 = my_macsec_key
-        mac_prim = client_mac
-        mac_seco = my_mac
-    # Initialize macsec object with macsec parameters
-    macsec_obj = macsec.Macsec(role, key1, key2, mac_prim, mac_seco)
-    macsec_obj.run_macsec()  # set macsec
-
-def setup_macsec_mesh(role, secure_client_socket, my_mac, client_mac):
+def setup_macsec_mesh(macsec_obj, secure_client_socket, client_mac):
     # Setup macsec and batman
-    secchan, my_macsec_key, client_macsec_key = setup_secchannel(secure_client_socket) # Establish secure channel and exchange macsec key
-    try:
-        setup_macsec(role, my_macsec_key, client_macsec_key, my_mac, client_mac) #setup macsec
-        logger.info(f'Macsec enabled with {client_mac}')
-    except Exception as e:
-        logger.error(f'Error setting up macsec with {client_mac}: {e}')
+    secchan, client_macsec_key = setup_secchannel(secure_client_socket, macsec_obj) # Establish secure channel and exchange macsec key
+    macsec_obj.set_macsec_rx(client_mac,  client_macsec_key) # setup macsec rx channel
     try:
         batman_exec(routing_algo="batman-adv", wifidev="macsec0", ip_address=get_mesh_ipv6_from_conf_file(), prefixlen=32)  # Execute batman
         logger.info('Batman executed')

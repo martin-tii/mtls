@@ -38,9 +38,8 @@ def manage_client(out_queue, mua):
         server_mac = message
     cli = mua.start_auth_client(server_mac)
     cli.establish_connection() #TODO: check if secchan should be established only if server certificate is verified
-    setup_macsec_mesh(role="secondary",
+    setup_macsec_mesh(macsec_obj=mua.macsec_obj,
                       secure_client_socket=cli.secure_client_socket,
-                      my_mac=cli.mymac,
                       client_mac=server_mac)
 
 def main():
@@ -49,7 +48,7 @@ def main():
 
     mua = mutAuth(in_queue, out_queue, shutdown_event)
     mua.check_mesh()
-
+    mua.macsec_obj.set_macsec_tx()  # Set macsec tx channel
     wpa_ctrl_instance = WPAMonitor(mua.wpa_supplicant_ctrl_path)
     wpa_thread = threading.Thread(target=wpa_ctrl_instance.start_monitoring, args=(in_queue,))
     mutAuth_tread = threading.Thread(target=mua.multicast_message)
