@@ -17,7 +17,7 @@ MAX_WAIT_TIME = 3  # seconds
 
 
 class AuthClient:
-    def __init__(self, server_mac, server_port, cert_path):
+    def __init__(self, server_mac, server_port, cert_path, mua):
         self.sslServerIP = mac_to_ipv6(server_mac)
         self.sslServerPort = server_port
         self.CERT_PATH = cert_path
@@ -26,6 +26,8 @@ class AuthClient:
         self.logger = self._setup_logger()
         self.ca = f'{self.CERT_PATH}/ca.crt'
         self.mymac = get_mac_addr(self.interface)
+        self.server_mac = server_mac
+        self.mua = mua
 
     @staticmethod
     def _setup_logger():
@@ -57,9 +59,18 @@ class AuthClient:
         try:
             result = self.connection(self.secure_client_socket)
             if result['authenticated']:
-                return result
+                with self.mua.connected_peers_status_lock:
+                    self.mua.connected_peers_status[self.server_mac][0] = "authenticated" # Update status as authenticated, num of failed attempts = same as before
+            else:
+                with self.mua.connected_peers_status_lock:
+                    self.mua.connected_peers_status[self.server_mac][1] = self.mua.connected_peers_status[self.server_mac][1] + 1 # Increment number of failed attempt by 1
+                    self.mua.connected_peers_status[self.server_mac][0] = "not connected"  # Update status as not connected
+            return result
         except Exception as e:
             self.logger.error("Define better this exception.", exc_info=True)
+            with self.mua.connected_peers_status_lock:
+                self.mua.connected_peers_status[self.server_mac][1] = self.mua.connected_peers_status[self.server_mac][1] + 1  # Increment number of failed attempt by 1
+                self.mua.connected_peers_status[self.server_mac][0] = "not connected"  # Update status as not connected
         # finally:
         #     # Close the socket
         #     secureClientSocket.close()
