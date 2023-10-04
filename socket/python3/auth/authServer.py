@@ -7,6 +7,7 @@ import sys
 sys.path.insert(0, '../')
 from tools.verification_tools import *
 from tools.custom_logger import CustomLogger
+from tools.utils import wait_for_interface_to_be_pingable
 import glob
 
 logger_instance = CustomLogger("Server")
@@ -37,7 +38,35 @@ class AuthServer:
         self.active_sockets_lock = threading.Lock()
         self.mua = mua
 
-    def handle_client(self, secure_client_socket, client_address):
+    """
+    def handle_client(self, client_connection, client_address):
+        client_mac = extract_mac_from_ipv6(client_address[0]) #TODO: check if it is safe to do so
+        if client_mac not in self.mua.connected_peers_status:
+            print("------------------server---------------------")
+            with self.mua.connected_peers_status_lock:
+                self.mua.connected_peers_status[client_mac] = ["ongoing",0]  # Update status as ongoing, num of failed attempts = 0
+            self.authenticate_client(client_connection, client_address, client_mac)
+        elif self.mua.connected_peers_status[client_mac][0] not in ["ongoing"]:
+            print("------------------server ---------------------")
+            with self.mua.connected_peers_status_lock:
+                self.mua.connected_peers_status[client_mac][0] = "ongoing"  # Update status as ongoing, num of failed attempts = same as before
+            self.authenticate_client(client_connection, client_address, client_mac)
+    """
+    #TODO: need to avoid simultaneous connection
+    def handle_client(self, client_connection, client_address):
+        client_mac = extract_mac_from_ipv6(client_address[0])  # TODO: check if it is safe to do so
+        if client_mac not in self.mua.connected_peers_status:
+            print("------------------server---------------------")
+            with self.mua.connected_peers_status_lock:
+                self.mua.connected_peers_status[client_mac] = ["ongoing",0]  # Update status as ongoing, num of failed attempts = 0
+        else:
+            print("------------------server ---------------------")
+            with self.mua.connected_peers_status_lock:
+                self.mua.connected_peers_status[client_mac][0] = "ongoing"  # Update status as ongoing, num of failed attempts = same as before
+        self.authenticate_client(client_connection, client_address, client_mac)
+
+    def authenticate_client(self, client_connection, client_address, client_mac):
+        secure_client_socket = self.context.wrap_socket(client_connection, server_side=True)
         try:
             client_cert = secure_client_socket.getpeercert(binary_form=True)
             if not client_cert:
@@ -45,18 +74,27 @@ class AuthServer:
                 raise CertificateNoPresentError("Unable to get the certificate from the client")
 
             auth = verify_cert(client_cert, self.ca, client_address[0], logger)
+            # TODO: take client mac from its certificate after this
             with self.client_auth_results_lock:
                 self.client_auth_results[client_address[0]] = auth
             if auth:
                 with self.active_sockets_lock:
                     self.active_sockets[client_address[0]] = secure_client_socket
+                with self.mua.connected_peers_status_lock:
+                    self.mua.connected_peers_status[client_mac][0] = "authenticated" # Update status as authenticated, num of failed attempts = same as before
                 self.mua.setup_macsec(secure_client_socket=secure_client_socket,
-                                      client_mac=extract_mac_from_ipv6(client_address[0]))
+                                      client_mac=client_mac)
             else:
                 # Handle the case when authentication fails, maybe send an error message
+                with self.mua.connected_peers_status_lock:
+                    self.mua.connected_peers_status[client_mac][1] = self.mua.connected_peers_status[client_mac][1] + 1 # Increment number of failed attempt by 1
+                    self.mua.connected_peers_status[client_mac][0] = "not connected"  # Update status as not connected
                 secure_client_socket.send(b"Authentication failed.")
         except Exception as e:
             logger.error("An error occurred while handling the client.", exc_info=True)
+            with self.mua.connected_peers_status_lock:
+                self.mua.connected_peers_status[client_mac][1] = self.mua.connected_peers_status[client_mac][1] + 1  # Increment number of failed attempt by 1
+                self.mua.connected_peers_status[client_mac][0] = "not connected"  # Update status as not connected
         # finally:
         #     secure_client_socket.close()
 
@@ -69,6 +107,7 @@ class AuthServer:
             return self.client_auth_results.get(client_address, None)
 
     def start_server(self):
+        wait_for_interface_to_be_pingable(self.interface, self.ipAddress) # Wait for interface to be reachable
         if is_ipv4(self.ipAddress):
             self.serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.serverSocket.bind((self.ipAddress, self.port))
@@ -80,14 +119,13 @@ class AuthServer:
             raise ValueError("Invalid IP address")
 
         self.serverSocket.listen()
-        self.serverSocket.settimeout(60)  # timeout of 60 seconds
+        self.serverSocket.settimeout(99999)  # maybe we can remove timeout since server needs to be listening throughout
         logger.info("Server listening")
 
         while self.running:
             try:
                 client_connection, client_address = self.serverSocket.accept()
-                secure_client_socket = self.context.wrap_socket(client_connection, server_side=True)
-                threading.Thread(target=self.handle_client, args=(secure_client_socket, client_address)).start()
+                threading.Thread(target=self.handle_client, args=(client_connection, client_address)).start()
             except socket.timeout:  # In case we add a timeout later.
                 continue
             except Exception as e:

@@ -41,14 +41,38 @@ def manage_client(out_queue, mua):
     mua.setup_macsec(secure_client_socket=cli.secure_client_socket,
                      client_mac=server_mac)
 
+def start_up(mua):
+    # Sets up wlp1s0 interface, macsec tx channel, bat0 on top of macsec0
+    mua.check_mesh()
+    mua.macsec_obj.set_macsec_tx()  # Set macsec tx channel
+    mua.batman()  # Set bat0 on top of macsec0
+
+def mutual_authentication(mua, in_queue):
+    # Start server to facilitate client auth requests, monitor ongoing auths and start client request if there is a new peer/ server baecon
+    auth_server_thread, auth_server = mua.start_auth_server()
+    # Start monitoring wpa for new peer connection
+    wpa_ctrl_instance = WPAMonitor(mua.wpa_supplicant_ctrl_path)
+    wpa_thread = threading.Thread(target=wpa_ctrl_instance.start_monitoring, args=(in_queue,))
+    mutAuth_tread = threading.Thread(target=mua.monitor_wpa)
+    wpa_thread.start()
+    mutAuth_tread.start()
+
 def main():
     in_queue = queue.Queue()
     out_queue = queue.Queue()
 
     mua = mutAuth(in_queue, out_queue, shutdown_event)
-    mua.check_mesh()
-    mua.macsec_obj.set_macsec_tx()  # Set macsec tx channel
-    mua.batman()
+    start_up(mua)
+    mutual_authentication(mua, in_queue)
+
+"""
+def main():
+    in_queue = queue.Queue()
+    out_queue = queue.Queue()
+
+    mua = mutAuth(in_queue, out_queue, shutdown_event)
+    start_up(mua)
+
     wpa_ctrl_instance = WPAMonitor(mua.wpa_supplicant_ctrl_path)
     wpa_thread = threading.Thread(target=wpa_ctrl_instance.start_monitoring, args=(in_queue,))
     mutAuth_tread = threading.Thread(target=mua.multicast_message)
@@ -89,7 +113,7 @@ def main():
         # Reset wait time if a server is detected
         if mua.server:
             wait_start = time.time()
-
+"""
 
 def stop(wpa_thread, mutAuth_tread, mua):
     wpa_thread.join()

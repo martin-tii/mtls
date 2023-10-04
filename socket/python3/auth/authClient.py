@@ -17,7 +17,7 @@ MAX_WAIT_TIME = 3  # seconds
 
 
 class AuthClient:
-    def __init__(self, server_mac, server_port, cert_path):
+    def __init__(self, server_mac, server_port, cert_path, mua):
         self.sslServerIP = mac_to_ipv6(server_mac)
         self.sslServerPort = server_port
         self.CERT_PATH = cert_path
@@ -26,6 +26,8 @@ class AuthClient:
         self.logger = self._setup_logger()
         self.ca = f'{self.CERT_PATH}/ca.crt'
         self.mymac = get_mac_addr(self.interface)
+        self.server_mac = server_mac
+        self.mua = mua
 
     @staticmethod
     def _setup_logger():
@@ -57,9 +59,19 @@ class AuthClient:
         try:
             result = self.connection(self.secure_client_socket)
             if result['authenticated']:
-                return result
+                with self.mua.connected_peers_status_lock:
+                    self.mua.connected_peers_status[self.server_mac][0] = "authenticated" # Update status as authenticated, num of failed attempts = same as before
+                self.mua.setup_macsec(secure_client_socket=self.secure_client_socket, client_mac=self.server_mac)
+            else:
+                with self.mua.connected_peers_status_lock:
+                    self.mua.connected_peers_status[self.server_mac][1] = self.mua.connected_peers_status[self.server_mac][1] + 1 # Increment number of failed attempt by 1
+                    self.mua.connected_peers_status[self.server_mac][0] = "not connected"  # Update status as not connected
+            return result
         except Exception as e:
             self.logger.error("Define better this exception.", exc_info=True)
+            with self.mua.connected_peers_status_lock:
+                self.mua.connected_peers_status[self.server_mac][1] = self.mua.connected_peers_status[self.server_mac][1] + 1  # Increment number of failed attempt by 1
+                self.mua.connected_peers_status[self.server_mac][0] = "not connected"  # Update status as not connected
         # finally:
         #     # Close the socket
         #     secureClientSocket.close()
@@ -97,12 +109,14 @@ class AuthClient:
                     time.sleep(wait_time)
                 else:
                     self.logger.error("Exceeded maximum retry attempts. Unable to connect to server.")
-                    raise
+                    #raise ServerConnectionRefusedError("Unable to connect to server socket")
+                    return
 
         server_cert = secureClientSocket.getpeercert(binary_form=True)
         if not server_cert:
             self.logger.error("Unable to get the server certificate", exc_info=True)
-            raise CertificateNoPresentError("Unable to get the server certificate")
+            #raise CertificateNoPresentError("Unable to get the server certificate")
+            return
 
         result['authenticated'] = verify_cert(server_cert, self.ca, self.sslServerIP, self.logger)
 

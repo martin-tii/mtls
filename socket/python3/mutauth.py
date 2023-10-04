@@ -37,6 +37,9 @@ class mutAuth():
         self.server_lock = threading.Lock()  # Lock for thread-safe access to `self.server`
         self.is_server_running = False  # Initial value
         self.macsec_obj = macsec.Macsec(my_macsec_key=generate_session_key())  # Initialize macsec object
+        self.connected_peers_status = {} # key = client mac address, value = [status : ("ongoing", "authenticated", "not connected"), no of failed attempts]}
+        self.connected_peers_status_lock = threading.Lock()
+        self.maximum_num_failed_attempts = 3 # Maximum number of failed attempts for mutual authentication (can be changed)
 
     @staticmethod
     def _setup_logger():
@@ -77,6 +80,42 @@ class mutAuth():
             else:
                 self.multicast_handler.send_multicast_message(self.mymac)
             time.sleep(BEACON_TIME)
+
+    def monitor_wpa(self):
+        muthread = threading.Thread(target=self.multicast_handler.receive_multicast)
+        muthread.start()
+
+        while not self.shutdown_event.is_set():
+            source, message = self.in_queue.get()
+            if source == "WPA":
+                self.logger.info("External node_connect event triggered!")
+                self.logger.info(f"Received MAC from WPA event: {message}")
+                handle_peer_connected_thread = threading.Thread(target=self.handle_peer_connected_event, args=(message,))
+                handle_peer_connected_thread.start()
+
+    def handle_peer_connected_event(self, mac):
+        if mac not in self.connected_peers_status:
+            # There is no ongoing connection with peer yet
+            # Wait for random seconds
+            random_wait = random.uniform(0.5,3)  # Wait between 0.5 to 3 seconds. Random waiting to avoid race condition
+            time.sleep(random_wait)
+            if mac not in self.connected_peers_status:
+                # Start as client
+                print("------------------client ---------------------")
+                with self.connected_peers_status_lock:
+                    self.connected_peers_status[mac] = ["ongoing", 0] # Update status as ongoing, num of failed attempts = 0
+                self.start_auth_client(mac)
+        elif self.connected_peers_status[mac][0] not in ["ongoing"]:
+            # If node does not have ongoing authentication or is not already authenticated or has not been blacklisted
+            # Wait for random seconds
+            random_wait = random.uniform(0.5,3)  # Wait between 0.5 to 3 seconds. Random waiting to avoid race condition
+            time.sleep(random_wait)
+            if self.connected_peers_status[mac][0] not in ["ongoing"]:
+                # Start as client
+                print("------------------client ---------------------")
+                with self.connected_peers_status_lock:
+                    self.connected_peers_status[mac][0] = "ongoing"  # Update status as ongoing, num of failed attempts = same as before
+                self.start_auth_client(mac)
 
     def multicast_message(self):
         CHECK_INTERVAL = 0.1  # Check every 0.1 seconds for a new message
@@ -143,9 +182,15 @@ class mutAuth():
         auth_server_thread.start()
         return auth_server_thread, auth_server
 
+    def start_auth_client(self, server_mac):
+        cli = AuthClient(server_mac, self.port, self.CERT_PATH, self)
+        cli.establish_connection()  # TODO: check if secchan should be established only if server certificate is verified
+        #self.setup_macsec(secure_client_socket=cli.secure_client_socket, client_mac=server_mac)
+
+    """
     def start_auth_client(self, ServerIP):
         return AuthClient(ServerIP, self.port, self.CERT_PATH)
-
+    """
     def batman(self):
         # todo check the interface
         #ipv6 = mac_to_ipv6(self.meshiface)
@@ -169,7 +214,7 @@ class mutAuth():
         return secchan, client_macsec_key
 
     def setup_macsec(self, secure_client_socket, client_mac):
-        # Setup macsec and batman
+        # Setup macsec
         secchan, client_macsec_key = self.setup_secchannel(secure_client_socket)  # Establish secure channel and exchange macsec key
         self.macsec_obj.set_macsec_rx(client_mac, client_macsec_key)  # setup macsec rx channel
     def start(self):
