@@ -49,9 +49,7 @@ def start_up(mua):
 
 def mutual_authentication(mua, in_queue):
     # Start server to facilitate client auth requests, monitor ongoing auths and start client request if there is a new peer/ server baecon
-    time.sleep(5) # wait for wlps10 to be up
     auth_server_thread, auth_server = mua.start_auth_server()
-
     # Start monitoring wpa for new peer connection
     wpa_ctrl_instance = WPAMonitor(mua.wpa_supplicant_ctrl_path)
     wpa_thread = threading.Thread(target=wpa_ctrl_instance.start_monitoring, args=(in_queue,))

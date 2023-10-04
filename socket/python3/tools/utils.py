@@ -146,7 +146,7 @@ def run_batman(wifidev, ip_address, prefixlen):
     # Run the batctl if add command
     subprocess.run(["batctl", "if", "add", wifidev], check=True)
 
-    print("bat0 up..")
+    logger.info("Setting bat0 up..")
     # Run the ifconfig bat0 up command
     subprocess.run(["ifconfig", "bat0", "up"], check=True)
 
@@ -154,15 +154,15 @@ def run_batman(wifidev, ip_address, prefixlen):
     command = ["ip", "-6", "addr", "show", "dev", "bat0"]
     result = subprocess.run(command, capture_output=True, text=True, check=True)
     old_ip = result.stdout.split('inet6 ')[1].split(' ')[0]
-    print("Deleting bat0 ipv6 address automatically assigned from mac..")
+    logger.info("Deleting bat0 ipv6 address automatically assigned from mac..")
     subprocess.run(["ip", "address", "del", old_ip, "dev", "bat0"], check=True)
 
-    print("bat0 ip address..")
+    logger.info("Setting bat0 ip address..")
     # Run the ifconfig bat0 <ip_address> netmask <netmask> command
     #subprocess.run(["ifconfig", "bat0", ip_address, "netmask", netmask], check=True)
     subprocess.run(["ip", "-6", "addr", "add", f'{ip_address}/{prefixlen}', "dev", "bat0"], check=True)
 
-    print("bat0 mtu size")
+    logger.info("Setting bat0 mtu size")
     # Run the ifconfig bat0 mtu 1460 command
     subprocess.run(["ifconfig", "bat0", "mtu", "1460"], check=True)
 
@@ -276,4 +276,27 @@ def read_conf_file(conf_file_path):
 def get_mesh_ipv6_from_conf_file():
     conf_file_path = f'{script_dir}/../cert_generation/csr.conf'
     config = read_conf_file(conf_file_path)
-    return config.get('alt_names', 'IP.2')
+    return config.get('alt_names', 'IP.1') # IP.1 = ipv6 derived from wlp1s0 MAC address i.e. batman MAC address, this can be changed to IP.2 if we want to use some other manually derived ip
+
+def is_interface_pingable(interface_name, ip_address):
+    # Return true if pingable
+    try:
+        if is_ipv4(ip_address):
+            ping_output = subprocess.check_output(['ping', '-c', '1', '-w', '1', ip_address], stderr=subprocess.STDOUT,universal_newlines=True)
+            return "1 packets transmitted, 1 received" in ping_output
+        elif is_ipv6(ip_address):
+            ping_output = subprocess.check_output(['ping', '-c', '1', '-w', '1', f'{ip_address}%{interface_name}'], stderr=subprocess.STDOUT, universal_newlines=True)
+            return "1 packets transmitted, 1 received" in ping_output
+        else:
+            raise ValueError("Invalid IP address")
+    except subprocess.CalledProcessError as e:
+        return False
+
+def wait_for_interface_to_be_pingable(interface_name, ipv6_address):
+    waiting_message_printed = False
+    while not is_interface_pingable(interface_name, ipv6_address):
+        # Waiting till interface is pingable
+        if not waiting_message_printed:
+            logger.info(f'Waiting for {interface_name} to be reachable..')
+            waiting_message_printed = True
+        time.sleep(1)

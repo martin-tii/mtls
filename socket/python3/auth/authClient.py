@@ -61,6 +61,7 @@ class AuthClient:
             if result['authenticated']:
                 with self.mua.connected_peers_status_lock:
                     self.mua.connected_peers_status[self.server_mac][0] = "authenticated" # Update status as authenticated, num of failed attempts = same as before
+                self.mua.setup_macsec(secure_client_socket=self.secure_client_socket, client_mac=self.server_mac)
             else:
                 with self.mua.connected_peers_status_lock:
                     self.mua.connected_peers_status[self.server_mac][1] = self.mua.connected_peers_status[self.server_mac][1] + 1 # Increment number of failed attempt by 1
@@ -108,12 +109,14 @@ class AuthClient:
                     time.sleep(wait_time)
                 else:
                     self.logger.error("Exceeded maximum retry attempts. Unable to connect to server.")
-                    raise
+                    #raise ServerConnectionRefusedError("Unable to connect to server socket")
+                    return
 
         server_cert = secureClientSocket.getpeercert(binary_form=True)
         if not server_cert:
             self.logger.error("Unable to get the server certificate", exc_info=True)
-            raise CertificateNoPresentError("Unable to get the server certificate")
+            #raise CertificateNoPresentError("Unable to get the server certificate")
+            return
 
         result['authenticated'] = verify_cert(server_cert, self.ca, self.sslServerIP, self.logger)
 

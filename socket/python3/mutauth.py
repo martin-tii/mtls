@@ -185,8 +185,7 @@ class mutAuth():
     def start_auth_client(self, server_mac):
         cli = AuthClient(server_mac, self.port, self.CERT_PATH, self)
         cli.establish_connection()  # TODO: check if secchan should be established only if server certificate is verified
-        self.setup_macsec(secure_client_socket=cli.secure_client_socket,
-                         client_mac=server_mac)
+        #self.setup_macsec(secure_client_socket=cli.secure_client_socket, client_mac=server_mac)
 
     """
     def start_auth_client(self, ServerIP):

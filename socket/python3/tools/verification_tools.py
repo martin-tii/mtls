@@ -32,6 +32,8 @@ class CertificateNoPresentError(Exception):
 class CertificateDifferentCN(Exception):
     pass
 
+class ServerConnectionRefusedError(Exception):
+    pass
 
 def verify_cert(cert, ca_cert, IPaddress,  logging):
     try:

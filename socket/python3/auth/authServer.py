@@ -7,6 +7,7 @@ import sys
 sys.path.insert(0, '../')
 from tools.verification_tools import *
 from tools.custom_logger import CustomLogger
+from tools.utils import wait_for_interface_to_be_pingable
 import glob
 
 logger_instance = CustomLogger("Server")
@@ -106,6 +107,7 @@ class AuthServer:
             return self.client_auth_results.get(client_address, None)
 
     def start_server(self):
+        wait_for_interface_to_be_pingable(self.interface, self.ipAddress) # Wait for interface to be reachable
         if is_ipv4(self.ipAddress):
             self.serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.serverSocket.bind((self.ipAddress, self.port))
