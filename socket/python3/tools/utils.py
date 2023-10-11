@@ -132,45 +132,30 @@ def modify_conf_file(conf_file_path, new_values):
     with open(conf_file_path, 'w') as configfile:
         config.write(configfile)
 
-def batman_exec(routing_algo, wifidev, ip_address, prefixlen):
+def batman_exec(routing_algo, ip_address, prefixlen):
     if routing_algo != "batman-adv":
         #TODO here should be OLSR
         return
     try:
-        run_batman(wifidev, ip_address, prefixlen)
+        run_batman(ip_address, prefixlen)
     except subprocess.CalledProcessError as e:
         print(f"Error: {e}")
 
 
-def run_batman(wifidev, ip_address, prefixlen):
-    # Run the batctl if add command
-    subprocess.run(["batctl", "if", "add", wifidev], check=True)
+def run_batman(ip_address, prefixlen):
+    logger.info("Setting mac address of bat0 to be same as wlp1s0..")
+    subprocess.run(["ip", "link", "set", "dev", "bat0", "address", get_mac_addr("wlp1s0")], check=True)
 
     logger.info("Setting bat0 up..")
     # Run the ifconfig bat0 up command
     subprocess.run(["ifconfig", "bat0", "up"], check=True)
 
-    # Delete ipv6 address automatically assigned from mac
-    command = ["ip", "-6", "addr", "show", "dev", "bat0"]
-    result = subprocess.run(command, capture_output=True, text=True, check=True)
-    old_ip = result.stdout.split('inet6 ')[1].split(' ')[0]
-    logger.info("Deleting bat0 ipv6 address automatically assigned from mac..")
-    subprocess.run(["ip", "address", "del", old_ip, "dev", "bat0"], check=True)
-
-    logger.info("Setting bat0 ip address..")
-    # Run the ifconfig bat0 <ip_address> netmask <netmask> command
-    #subprocess.run(["ifconfig", "bat0", ip_address, "netmask", netmask], check=True)
-    subprocess.run(["ip", "-6", "addr", "add", f'{ip_address}/{prefixlen}', "dev", "bat0"], check=True)
-
     logger.info("Setting bat0 mtu size")
     # Run the ifconfig bat0 mtu 1460 command
     subprocess.run(["ifconfig", "bat0", "mtu", "1460"], check=True)
 
-    print()
     # Run the ifconfig bat0 command to show the interface information
     subprocess.run(["ifconfig", "bat0"], check=True)
-            # Handle the error if any of the commands fail
-
 
 def mac_to_ipv6(mac_address):
     # Remove any separators from the MAC address (e.g., colons, hyphens)
@@ -262,11 +247,16 @@ def is_ipv6(ip):
         return False
 
 def generate_session_key():
+    # TODO: check if this can be removed
     rand = os.urandom(32)
     #return int.from_bytes(rand, 'big')
     return rand.hex()
 
+def generate_random_bytes(byte_size=32):
+    return os.urandom(byte_size)
+
 def read_conf_file(conf_file_path):
+    # TODO: see if this can be removed
     # Create a configparser object
     config = configparser.ConfigParser()
     # Read the configuration file
@@ -274,6 +264,7 @@ def read_conf_file(conf_file_path):
     return config
 
 def get_mesh_ipv6_from_conf_file():
+    #TODO: see if this can be removed
     conf_file_path = f'{script_dir}/../cert_generation/csr.conf'
     config = read_conf_file(conf_file_path)
     return config.get('alt_names', 'IP.1') # IP.1 = ipv6 derived from wlp1s0 MAC address i.e. batman MAC address, this can be changed to IP.2 if we want to use some other manually derived ip
@@ -300,3 +291,15 @@ def wait_for_interface_to_be_pingable(interface_name, ipv6_address):
             logger.info(f'Waiting for {interface_name} to be reachable..')
             waiting_message_printed = True
         time.sleep(1)
+
+def is_interface_up(interface_name):
+    # Check if interface is up
+    try:
+        output = subprocess.check_output(['ifconfig', interface_name])
+        return 'inet' in output.decode()
+    except subprocess.CalledProcessError:
+        return False
+
+def xor_bytes(byte1, byte2):
+    # Return bit-wise XOR of byte1 and byte2
+    return bytes(a ^ b for a, b in zip(byte1, byte2))

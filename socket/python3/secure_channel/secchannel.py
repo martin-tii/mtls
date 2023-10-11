@@ -1,6 +1,7 @@
 import queue
 import ssl
 import socket
+import json
 from tools.custom_logger import CustomLogger
 
 logger_instance = CustomLogger("SecChannel")
@@ -39,11 +40,11 @@ class SecMessageHandler:
 
         try:
             self.socket.send(message.encode())
-            self.logger.info(f"Sent: {message}")
+            self.logger.info(f"Sent: {message} to {self.socket.getpeername()[0]}")
         except Exception as e:
-            self.logger.error("Error sending message.", exc_info=True)
+            self.logger.error(f"Error sending message to {self.socket.getpeername()[0]}.", exc_info=True)
 
-    def receive_message(self, macsec_key_q=queue.Queue()):
+    def receive_message(self, macsec_param_q=queue.Queue()):
         """Continuously receive messages from the socket."""
         if not self._is_ssl_socket():
             self.logger.error("Socket is not SSL enabled.")
@@ -59,12 +60,11 @@ class SecMessageHandler:
                     self.logger.info("Other end signaled end of communication.")
                     break
                 else:
-                    self.logger.info(f"Received: {data}")
+                    self.logger.info(f"Received: {data} from {self.socket.getpeername()[0]}")
                     if self.callback:
                         self.callback(data)  # Execute the callback with the received data
-                    if "macsec_key_" in data: # if received data is the macsec key, put it in queue
-                        macsec_key = data.split('macsec_key_')[1]
-                        macsec_key_q.put(macsec_key)
+                    if 'bytes_for_my_key' in data and 'bytes_for_client_key' in data and 'port' in data: # if received data has macsec parameters, put it in queue
+                        macsec_param_q.put(data)
 
         except socket.timeout:
             self.logger.warning("Connection timed out. Ending communication.")
