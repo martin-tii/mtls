@@ -40,9 +40,9 @@ class SecMessageHandler:
 
         try:
             self.socket.send(message.encode())
-            self.logger.info(f"Sent: {message}")
+            self.logger.info(f"Sent: {message} to {self.socket.getpeername()[0]}")
         except Exception as e:
-            self.logger.error("Error sending message.", exc_info=True)
+            self.logger.error(f"Error sending message to {self.socket.getpeername()[0]}.", exc_info=True)
 
     def receive_message(self, macsec_param_q=queue.Queue()):
         """Continuously receive messages from the socket."""
@@ -60,10 +60,10 @@ class SecMessageHandler:
                     self.logger.info("Other end signaled end of communication.")
                     break
                 else:
-                    self.logger.info(f"Received: {data}")
+                    self.logger.info(f"Received: {data} from {self.socket.getpeername()[0]}")
                     if self.callback:
                         self.callback(data)  # Execute the callback with the received data
-                    if 'macsec_key' in data and 'port' in data: # if received data has macsec parameters, put it in queue
+                    if 'bytes_for_my_key' in data and 'bytes_for_client_key' in data and 'port' in data: # if received data has macsec parameters, put it in queue
                         macsec_param_q.put(data)
 
         except socket.timeout:

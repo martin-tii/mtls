@@ -70,7 +70,7 @@ class AuthServer:
         try:
             client_cert = secure_client_socket.getpeercert(binary_form=True)
             if not client_cert:
-                logger.error("Unable to get the certificate from the client", exc_info=True)
+                logger.error(f"Unable to get the certificate from the client {client_address[0]}", exc_info=True)
                 raise CertificateNoPresentError("Unable to get the certificate from the client")
 
             auth = verify_cert(client_cert, self.ca, client_address[0], logger)
@@ -91,7 +91,7 @@ class AuthServer:
                     self.mua.connected_peers_status[client_mac][0] = "not connected"  # Update status as not connected
                 secure_client_socket.send(b"Authentication failed.")
         except Exception as e:
-            logger.error("An error occurred while handling the client.", exc_info=True)
+            logger.error(f"An error occurred while handling the client {client_address[0]}.", exc_info=True)
             with self.mua.connected_peers_status_lock:
                 self.mua.connected_peers_status[client_mac][1] = self.mua.connected_peers_status[client_mac][1] + 1  # Increment number of failed attempt by 1
                 self.mua.connected_peers_status[client_mac][0] = "not connected"  # Update status as not connected

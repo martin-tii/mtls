@@ -143,21 +143,12 @@ def batman_exec(routing_algo, ip_address, prefixlen):
 
 
 def run_batman(ip_address, prefixlen):
+    logger.info("Setting mac address of bat0 to be same as wlp1s0..")
+    subprocess.run(["ip", "link", "set", "dev", "bat0", "address", get_mac_addr("wlp1s0")], check=True)
+
     logger.info("Setting bat0 up..")
     # Run the ifconfig bat0 up command
     subprocess.run(["ifconfig", "bat0", "up"], check=True)
-
-    # Delete ipv6 address automatically assigned from mac
-    command = ["ip", "-6", "addr", "show", "dev", "bat0"]
-    result = subprocess.run(command, capture_output=True, text=True, check=True)
-    old_ip = result.stdout.split('inet6 ')[1].split(' ')[0]
-    logger.info("Deleting bat0 ipv6 address automatically assigned from mac..")
-    subprocess.run(["ip", "address", "del", old_ip, "dev", "bat0"], check=True)
-
-    logger.info("Setting bat0 ip address..")
-    # Run the ifconfig bat0 <ip_address> netmask <netmask> command
-    #subprocess.run(["ifconfig", "bat0", ip_address, "netmask", netmask], check=True)
-    subprocess.run(["ip", "-6", "addr", "add", f'{ip_address}/{prefixlen}', "dev", "bat0"], check=True)
 
     logger.info("Setting bat0 mtu size")
     # Run the ifconfig bat0 mtu 1460 command
@@ -256,11 +247,16 @@ def is_ipv6(ip):
         return False
 
 def generate_session_key():
+    # TODO: check if this can be removed
     rand = os.urandom(32)
     #return int.from_bytes(rand, 'big')
     return rand.hex()
 
+def generate_random_bytes(byte_size=32):
+    return os.urandom(byte_size)
+
 def read_conf_file(conf_file_path):
+    # TODO: see if this can be removed
     # Create a configparser object
     config = configparser.ConfigParser()
     # Read the configuration file
@@ -268,6 +264,7 @@ def read_conf_file(conf_file_path):
     return config
 
 def get_mesh_ipv6_from_conf_file():
+    #TODO: see if this can be removed
     conf_file_path = f'{script_dir}/../cert_generation/csr.conf'
     config = read_conf_file(conf_file_path)
     return config.get('alt_names', 'IP.1') # IP.1 = ipv6 derived from wlp1s0 MAC address i.e. batman MAC address, this can be changed to IP.2 if we want to use some other manually derived ip
@@ -302,3 +299,7 @@ def is_interface_up(interface_name):
         return 'inet' in output.decode()
     except subprocess.CalledProcessError:
         return False
+
+def xor_bytes(byte1, byte2):
+    # Return bit-wise XOR of byte1 and byte2
+    return bytes(a ^ b for a, b in zip(byte1, byte2))

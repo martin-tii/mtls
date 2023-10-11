@@ -39,10 +39,10 @@ def verify_cert(cert, ca_cert, IPaddress,  logging):
     try:
         return validation(cert, ca_cert, IPaddress, logging)
     except (CertificateExpiredError, CertificateHostnameError, CertificateIssuerError, ValueError) as e:
-        logging.error("Certificate verification failed.", exc_info=True)
+        logging.error(f"Certificate verification failed with {IPaddress}.", exc_info=True)
         return False
     except Exception as e:
-        logging.error("An unexpected error occurred during certificate verification.", exc_info=True)
+        logging.error(f"An unexpected error occurred during certificate verification with {IPaddress}.", exc_info=True)
         return False
 
 
@@ -60,11 +60,11 @@ def validation(cert, ca_cert, IPaddress, logging):
 
     # Check if the certificate has expired
     if expiration_date < current_date:
-        logging.error("Certificate has expired.", exc_info=True)
+        logging.error(f"Certificate of {IPaddress} has expired.", exc_info=True)
         raise CertificateExpiredError("Certificate has expired.")
 
     if activation_date > current_date:
-        logging.error("Client certificate not yet active.", exc_info=True)
+        logging.error(f"Client certificate not yet active for {IPaddress}.", exc_info=True)
         raise CertificateExpiredError("Client certificate not yet active")
 
     if _verify_certificate_chain(cert, ca_cert, logging):
@@ -74,11 +74,11 @@ def validation(cert, ca_cert, IPaddress, logging):
         # Extract the actual ID from CN
         common_name = x509.get_subject().CN
         if common_name != extract_mac_from_ipv6(IPaddress):
-            logging.error("CN does not match the MAC Address.", exc_info=True)
+            logging.error(f"CN does not match the MAC Address for {IPaddress}", exc_info=True)
             raise CertificateDifferentCN("CN does not match the MAC Address.")
 
     # If the client certificate has passed all verifications, you can print or log a success message
-    logging.info("Certificate verification successful.")
+    logging.info(f"Certificate verification successful for {IPaddress}.")
     return True
 
 

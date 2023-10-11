@@ -208,19 +208,28 @@ class mutAuth():
         macsec_param_q = queue.Queue()  # queue to store macsec parameters: macsec_key, port from client_secchan.receive_message
         receiver_thread = threading.Thread(target=secchan.receive_message, args=(macsec_param_q,))
         receiver_thread.start()
-        print(f"Sending my macsec parameters: {my_macsec_param}")
+        print(f"Sending my macsec parameters: {my_macsec_param} to {secure_client_socket.getpeername()[0]}")
         secchan.send_message(json.dumps(my_macsec_param))
         client_macsec_param = json.loads(macsec_param_q.get())
         return secchan, client_macsec_param
 
     def setup_macsec(self, secure_client_socket, client_mac):
         # Setup macsec
-        my_macsec_key = generate_session_key()
+        # Compute macsec parameters
+        bytes_for_my_key = generate_random_bytes() # bytes for my key
+        bytes_for_client_key = generate_random_bytes() # bytes for client key
         my_port = self.macsec_obj.assign_unique_port(client_mac)
-        my_macsec_param = {'macsec_key': my_macsec_key, 'port': my_port}
-        secchan, client_macsec_param = self.setup_secchannel(secure_client_socket, my_macsec_param)  # Establish secure channel and exchange macsec key, port
-        self.macsec_obj.set_macsec_tx(client_mac, my_macsec_key, my_port)
-        self.macsec_obj.set_macsec_rx(client_mac, client_macsec_param['macsec_key'], client_macsec_param['port'])  # setup macsec rx channel
+        my_macsec_param = {'bytes_for_my_key': bytes_for_my_key.hex(), 'bytes_for_client_key': bytes_for_client_key.hex(), 'port': my_port} # Bytes conveted into hex strings so that they can be dumped into json later
+
+        # Establish secure channel and exchange bytes for macsec keys and port
+        secchan, client_macsec_param = self.setup_secchannel(secure_client_socket, my_macsec_param)
+
+        # Compute keys by XORing bytes
+        my_macsec_key = xor_bytes(bytes_for_my_key, bytes.fromhex(client_macsec_param['bytes_for_client_key'])).hex() # XOR my bytes_for_my_key with client's bytes_for_client_key
+        client_macsec_key = xor_bytes(bytes_for_client_key, bytes.fromhex(client_macsec_param['bytes_for_my_key'])).hex() # XOR my bytes_for_client_key with client's bytes_for_my_key
+
+        self.macsec_obj.set_macsec_tx(client_mac, my_macsec_key, my_port) # setup macsec tx channel
+        self.macsec_obj.set_macsec_rx(client_mac, client_macsec_key, client_macsec_param['port'])  # setup macsec rx channel
         self.macsec_obj.add_macsec_interface_to_batman(client_mac)
         if not is_interface_up('bat0'):
             self.batman()
