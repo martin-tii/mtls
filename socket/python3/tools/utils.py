@@ -132,20 +132,17 @@ def modify_conf_file(conf_file_path, new_values):
     with open(conf_file_path, 'w') as configfile:
         config.write(configfile)
 
-def batman_exec(routing_algo, wifidev, ip_address, prefixlen):
+def batman_exec(routing_algo, ip_address, prefixlen):
     if routing_algo != "batman-adv":
         #TODO here should be OLSR
         return
     try:
-        run_batman(wifidev, ip_address, prefixlen)
+        run_batman(ip_address, prefixlen)
     except subprocess.CalledProcessError as e:
         print(f"Error: {e}")
 
 
-def run_batman(wifidev, ip_address, prefixlen):
-    # Run the batctl if add command
-    subprocess.run(["batctl", "if", "add", wifidev], check=True)
-
+def run_batman(ip_address, prefixlen):
     logger.info("Setting bat0 up..")
     # Run the ifconfig bat0 up command
     subprocess.run(["ifconfig", "bat0", "up"], check=True)
@@ -166,11 +163,8 @@ def run_batman(wifidev, ip_address, prefixlen):
     # Run the ifconfig bat0 mtu 1460 command
     subprocess.run(["ifconfig", "bat0", "mtu", "1460"], check=True)
 
-    print()
     # Run the ifconfig bat0 command to show the interface information
     subprocess.run(["ifconfig", "bat0"], check=True)
-            # Handle the error if any of the commands fail
-
 
 def mac_to_ipv6(mac_address):
     # Remove any separators from the MAC address (e.g., colons, hyphens)
@@ -300,3 +294,11 @@ def wait_for_interface_to_be_pingable(interface_name, ipv6_address):
             logger.info(f'Waiting for {interface_name} to be reachable..')
             waiting_message_printed = True
         time.sleep(1)
+
+def is_interface_up(interface_name):
+    # Check if interface is up
+    try:
+        output = subprocess.check_output(['ifconfig', interface_name])
+        return 'inet' in output.decode()
+    except subprocess.CalledProcessError:
+        return False
