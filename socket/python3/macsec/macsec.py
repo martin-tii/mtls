@@ -10,19 +10,12 @@ from tools.custom_logger import CustomLogger
 
 logger_instance = CustomLogger("macsec")
 class Macsec:
-    '''
-    from macsec.macsec import *
-    mascec_obj = Macsec(my_macsec_key="1111111111111111111111111111111111111111111111111111111111111111")
-    mascec_obj.set_macsec_tx()
-    mascec_obj.set_macsec_rx(client_mac="04:f0:21:9e:6b:39",  client_macsec_key="1111111111111111111111111111111111111111111111111111111111111112")
-    mascec_obj.set_macsec_rx(client_mac="04:f0:21:45:d5:29",  client_macsec_key="1111111111111111111111111111111111111111111111111111111111111113")
-    '''
-    def __init__(self, interface="wlp1s0", macsec_encryption="off"):
+    def __init__(self, level="lower", interface="wlp1s0", macsec_encryption="off"):
+        self.level = level # Macsec level: "lower" or "upper"
         self.interface = interface
         self.available_ports = set(range(1, 2**16)) # 1 to 2^16-1
         self.used_ports = {} # client_mac: port
         self.available_ports_lock = threading.Lock()
-        #self.my_macsec_key = my_macsec_key
         self.macsec_encryption = macsec_encryption  # Flag to set macsec encrypt on or off
         self.logger = logger_instance.get_logger()
 
@@ -50,18 +43,11 @@ class Macsec:
         except Exception as e:
             self.logger.error(f'Error setting up macsec with {client_mac}: {e}')
 
-    def add_macsec_interface_to_batman(self, client_mac):
-        # Add interface to batman
-        macsec_interface = self.get_macsec_interface_name(client_mac)
-        try:
-            subprocess.run(["batctl", "if", "add", macsec_interface], check=True)
-            self.logger.info(f'Added macsec interface for {client_mac} to batman')
-        except Exception as e:
-            self.logger.error(f'Error adding macsec interface for {client_mac} to batman: {e}')
-
-    @staticmethod
-    def get_macsec_interface_name(client_mac):
-        return f"ms{client_mac.replace(':', '')}"
+    def get_macsec_interface_name(self, client_mac):
+        if self.level == "lower":
+            return f"lms{client_mac.replace(':', '')}"
+        else:
+            return f"ums{client_mac.replace(':', '')}"
 
 
     def assign_unique_port(self, client_mac):

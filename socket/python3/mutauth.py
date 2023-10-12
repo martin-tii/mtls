@@ -37,10 +37,11 @@ class mutAuth():
         self.macs_in_queue = set()  # A set to keep track of MACs in the queue.
         self.server_lock = threading.Lock()  # Lock for thread-safe access to `self.server`
         self.is_server_running = False  # Initial value
-        self.macsec_obj = macsec.Macsec()  # Initialize macsec object
+        self.macsec_lower = macsec.Macsec(level="lower", interface="wlp1s0", macsec_encryption="off")  # Initialize lower macsec object
         self.connected_peers_status = {} # key = client mac address, value = [status : ("ongoing", "authenticated", "not connected"), no of failed attempts]}
         self.connected_peers_status_lock = threading.Lock()
         self.maximum_num_failed_attempts = 3 # Maximum number of failed attempts for mutual authentication (can be changed)
+        self.lower_batman_interface = "bat0"
 
     @staticmethod
     def _setup_logger():
@@ -83,8 +84,8 @@ class mutAuth():
             time.sleep(BEACON_TIME)
 
     def monitor_wpa(self):
-        muthread = threading.Thread(target=self.multicast_handler.receive_multicast)
-        muthread.start()
+        #muthread = threading.Thread(target=self.multicast_handler.receive_multicast)
+        #muthread.start()
 
         while not self.shutdown_event.is_set():
             source, message = self.in_queue.get()
@@ -192,12 +193,9 @@ class mutAuth():
     def start_auth_client(self, ServerIP):
         return AuthClient(ServerIP, self.port, self.CERT_PATH)
     """
-    def batman(self):
-        # todo check the interface
-        #ipv6 = mac_to_ipv6(self.meshiface)
-        ipv6 = get_mesh_ipv6_from_conf_file()
+    def batman(self, batman_interface):
         try:
-            batman_exec("batman-adv", ipv6, 64)
+            batman_exec(batman_interface,"batman-adv")
         except Exception as e:
             logger.error(f'Error setting up bat0: {e}')
             sys.exit(1)
@@ -218,7 +216,7 @@ class mutAuth():
         # Compute macsec parameters
         bytes_for_my_key = generate_random_bytes() # bytes for my key
         bytes_for_client_key = generate_random_bytes() # bytes for client key
-        my_port = self.macsec_obj.assign_unique_port(client_mac)
+        my_port = self.macsec_lower.assign_unique_port(client_mac)
         my_macsec_param = {'bytes_for_my_key': bytes_for_my_key.hex(), 'bytes_for_client_key': bytes_for_client_key.hex(), 'port': my_port} # Bytes conveted into hex strings so that they can be dumped into json later
 
         # Establish secure channel and exchange bytes for macsec keys and port
@@ -228,11 +226,12 @@ class mutAuth():
         my_macsec_key = xor_bytes(bytes_for_my_key, bytes.fromhex(client_macsec_param['bytes_for_client_key'])).hex() # XOR my bytes_for_my_key with client's bytes_for_client_key
         client_macsec_key = xor_bytes(bytes_for_client_key, bytes.fromhex(client_macsec_param['bytes_for_my_key'])).hex() # XOR my bytes_for_client_key with client's bytes_for_my_key
 
-        self.macsec_obj.set_macsec_tx(client_mac, my_macsec_key, my_port) # setup macsec tx channel
-        self.macsec_obj.set_macsec_rx(client_mac, client_macsec_key, client_macsec_param['port'])  # setup macsec rx channel
-        self.macsec_obj.add_macsec_interface_to_batman(client_mac)
-        if not is_interface_up('bat0'):
-            self.batman()
+        self.macsec_lower.set_macsec_tx(client_mac, my_macsec_key, my_port) # setup macsec tx channel
+        self.macsec_lower.set_macsec_rx(client_mac, client_macsec_key, client_macsec_param['port'])  # setup macsec rx channel
+        # Add lower macsec interface to lower batman interface
+        add_interface_to_batman(interface_to_add=self.macsec_lower.get_macsec_interface_name(client_mac), batman_interface=self.lower_batman_interface)
+        if not is_interface_up(self.lower_batman_interface): # Turn lower batman interface up if not up already
+            self.batman(self.lower_batman_interface)
 
     def start(self):
         # ... other starting procedures

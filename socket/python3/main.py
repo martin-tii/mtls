@@ -44,8 +44,6 @@ def manage_client(out_queue, mua):
 def start_up(mua):
     # Sets up wlp1s0 interface
     mua.check_mesh()
-    #mua.macsec_obj.set_macsec_tx()  # Set macsec tx channel
-    #mua.batman()  # Set bat0 on (no interface added at this point)
 
 def mutual_authentication(mua, in_queue):
     # Start server to facilitate client auth requests, monitor ongoing auths and start client request if there is a new peer/ server baecon
