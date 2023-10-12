@@ -132,30 +132,30 @@ def modify_conf_file(conf_file_path, new_values):
     with open(conf_file_path, 'w') as configfile:
         config.write(configfile)
 
-def batman_exec(routing_algo, ip_address, prefixlen):
+def batman_exec(batman_interface, routing_algo):
     if routing_algo != "batman-adv":
         #TODO here should be OLSR
         return
     try:
-        run_batman(ip_address, prefixlen)
+        run_batman(batman_interface)
     except subprocess.CalledProcessError as e:
         print(f"Error: {e}")
 
 
-def run_batman(ip_address, prefixlen):
-    logger.info("Setting mac address of bat0 to be same as wlp1s0..")
-    subprocess.run(["ip", "link", "set", "dev", "bat0", "address", get_mac_addr("wlp1s0")], check=True)
+def run_batman(batman_interface):
+    logger.info(f"Setting mac address of {batman_interface} to be same as wlp1s0..")
+    subprocess.run(["ip", "link", "set", "dev", batman_interface, "address", get_mac_addr("wlp1s0")], check=True)
 
-    logger.info("Setting bat0 up..")
-    # Run the ifconfig bat0 up command
-    subprocess.run(["ifconfig", "bat0", "up"], check=True)
+    logger.info(f"Setting {batman_interface} up..")
+    # Run the ifconfig batman_interface up command
+    subprocess.run(["ifconfig", batman_interface, "up"], check=True)
 
-    logger.info("Setting bat0 mtu size")
-    # Run the ifconfig bat0 mtu 1460 command
-    subprocess.run(["ifconfig", "bat0", "mtu", "1460"], check=True)
+    logger.info(f"Setting {batman_interface} mtu size")
+    # Run the ifconfig batman_interface mtu 1460 command
+    subprocess.run(["ifconfig", batman_interface, "mtu", "1460"], check=True)
 
-    # Run the ifconfig bat0 command to show the interface information
-    subprocess.run(["ifconfig", "bat0"], check=True)
+    # Run the ifconfig batman_interface command to show the interface information
+    subprocess.run(["ifconfig", batman_interface], check=True)
 
 def mac_to_ipv6(mac_address):
     # Remove any separators from the MAC address (e.g., colons, hyphens)
@@ -303,3 +303,11 @@ def is_interface_up(interface_name):
 def xor_bytes(byte1, byte2):
     # Return bit-wise XOR of byte1 and byte2
     return bytes(a ^ b for a, b in zip(byte1, byte2))
+
+def add_interface_to_batman(interface_to_add, batman_interface):
+    # Add interface to batman
+    try:
+        subprocess.run(["batctl", "meshif", batman_interface, "if", "add", interface_to_add], check=True)
+        logger.info(f'Added interface {interface_to_add} to {batman_interface}')
+    except Exception as e:
+        logger.error(f'Error adding interface {interface_to_add} to {batman_interface}: {e}')
