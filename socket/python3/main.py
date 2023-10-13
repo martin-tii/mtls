@@ -62,6 +62,7 @@ def main():
     mua = mutAuth(in_queue, out_queue, shutdown_event)
     start_up(mua)
     mutual_authentication(mua, in_queue)
+    apply_nft_rules(rules_file='/root/mtls/socket/python3/tools/firewall.nft')
 
 """
 def main():
