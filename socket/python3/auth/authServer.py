@@ -15,14 +15,14 @@ logger = logger_instance.get_logger()
 
 
 class AuthServer:
-    def __init__(self, ip_address, port, cert_path, mua):
+    def __init__(self, interface, ip_address, port, cert_path, mua):
         threading.Thread.__init__(self)
         self.running = True
         self.ipAddress = ip_address
         self.port = port
         self.CERT_PATH = cert_path
         self.ca = f'{self.CERT_PATH}/ca.crt'
-        self.interface = "wlp1s0"
+        self.interface = interface
         self.mymac = get_mac_addr(self.interface)
         # Create the SSL context here and set it as an instance variable
         self.context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)

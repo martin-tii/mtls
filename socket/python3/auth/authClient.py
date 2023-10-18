@@ -17,11 +17,11 @@ MAX_WAIT_TIME = 3  # seconds
 
 
 class AuthClient:
-    def __init__(self, server_mac, server_port, cert_path, mua):
+    def __init__(self, interface, server_mac, server_port, cert_path, mua):
         self.sslServerIP = mac_to_ipv6(server_mac)
         self.sslServerPort = server_port
         self.CERT_PATH = cert_path
-        self.interface = "wlp1s0"
+        self.interface = interface
         self.secure_client_socket = None
         self.logger = self._setup_logger()
         self.ca = f'{self.CERT_PATH}/ca.crt'

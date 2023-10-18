@@ -311,3 +311,10 @@ def add_interface_to_batman(interface_to_add, batman_interface):
         logger.info(f'Added interface {interface_to_add} to {batman_interface}')
     except Exception as e:
         logger.error(f'Error adding interface {interface_to_add} to {batman_interface}: {e}')
+
+def add_interface_to_bridge(interface_to_add, bridge_interface):
+    try:
+        subprocess.run(["brctl", "addif", bridge_interface, interface_to_add], check=True)
+        logger.info(f'Added interface {interface_to_add} to {bridge_interface}')
+    except Exception as e:
+        logger.error(f'Error adding interface {interface_to_add} to {bridge_interface}: {e}')
