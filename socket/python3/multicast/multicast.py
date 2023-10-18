@@ -14,10 +14,11 @@ from tools.custom_logger import CustomLogger
 
 
 class MulticastHandler:
-    def __init__(self, qeue, multicast_group, port):
+    def __init__(self, qeue, multicast_group, port, interface):
         self.queue = qeue
         self.multicast_group = multicast_group
         self.port = port
+        self.interface = interface # Multicast interface. Set as wlp1s0: in case of TLS for lower macsec, bat0: in case of TLS for upper macsec
         self.logger = self._setup_logger()
         self.excluded = [get_mac_addr("wlp1s0"), get_mac_addr("wlp1s0") + '_server']
 
@@ -27,22 +28,42 @@ class MulticastHandler:
 
     def send_multicast_message(self, data):
         with socket.socket(socket.AF_INET6, socket.SOCK_DGRAM) as sock:
-            sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_HOPS, 1)
+            sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_HOPS, 1) #TODO: check if this need to be removed for bat0 (we want multicast to reach multi-hop nodes too)
+            sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_IF, socket.if_nametoindex(self.interface)) # Set multicast interface
+
             message = {
                 'mac_address': data,
                 'message_type': 'mac_announcement'
             }
-            self.logger.info(f'Sending data {message} to {self.multicast_group}:{self.port}')
+            self.logger.info(f'Sending data {message} to {self.multicast_group}:{self.port} from interface {self.interface}')
             sock.sendto(json.dumps(message).encode('utf-8'), (self.multicast_group, self.port))
 
     def receive_multicast(self):
 
+        with socket.socket(socket.AF_INET6, socket.SOCK_DGRAM, socket.IPPROTO_UDP) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+            # Bind to the wildcard address and desired port
+            sock.bind(('::', self.port))
+
+            # Set the multicast interface
+            index = socket.if_nametoindex(self.interface)
+            sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_IF, index.to_bytes(4, byteorder='little'))
+
+            # Construct the membership request
+            mreq = socket.inet_pton(socket.AF_INET6, self.multicast_group) + index.to_bytes(4, byteorder='little')
+
+            # Add the membership to the socket
+            sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_JOIN_GROUP, mreq)
+            """
         with socket.socket(socket.AF_INET6, socket.SOCK_DGRAM) as sock:
             sock.bind(('', self.port))
 
             group = socket.inet_pton(socket.AF_INET6, self.multicast_group)
             mreq = group + struct.pack('@I', 0)
+            #mreq = group + socket.if_nametoindex(self.interface).to_bytes(4,byteorder='little')
             sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_JOIN_GROUP, mreq)
+            """
 
             self.logger.info(f"Listening for messages on {self.multicast_group}:{self.port}...")
             while True:
@@ -63,11 +84,12 @@ def main():
     parser.add_argument('--mode', choices=['send', 'receive', 'both'], required=True, help='Run mode: send, receive, or both')
     parser.add_argument('--address', default='ff02::1', help='Multicast IPv6 address (default: ff02::1)')
     parser.add_argument('--port', type=int, default=12345, help='Port to use (default: 12345)')
+    parser.add_argument('--interface', default="wlp1s0", help='Multicast interface (default: wlp1s0)')
 
     args = parser.parse_args()
     queue = Queue()
 
-    multicast_handler = MulticastHandler(queue, args.address, args.port)
+    multicast_handler = MulticastHandler(queue, args.address, args.port, args.interface)
 
     if args.mode == 'receive':
         multicast_handler.receive_multicast()
