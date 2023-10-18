@@ -116,9 +116,9 @@ def apply_nft_rules(rules_file="firewall.nft"):
     try:
         # Run the nft command to apply the rules from the specified file
         subprocess.run(['nft', '-f', rules_file], check=True)
-        print("nftables rules applied successfully.")
+        logger.info("nftables rules applied successfully.")
     except subprocess.CalledProcessError as e:
-        print(f"Error applying nftables rules: {e}")
+        logger.error(f"Error applying nftables rules: {e}")
 
 
 def modify_conf_file(conf_file_path, new_values):

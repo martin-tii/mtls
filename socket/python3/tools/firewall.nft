@@ -10,6 +10,9 @@ table inet filter {
         # Accept EAP-TLS (EAPoL) traffic (Ethernet type 0x888E)
         meta protocol 0x888E accept
 
+        # Accept IPv6 traffic (Ethernet type 0x86DD)
+        meta protocol 0x86DD accept
+
         # Accept AH traffic (IP type 50)
         ip protocol ah accept
 
@@ -19,14 +22,14 @@ table inet filter {
         # Accept IPv6 NDP (ICMPv6) traffic
         ip6 nexthdr icmpv6 icmpv6 type { nd-neighbor-solicit, nd-neighbor-advert, nd-router-solicit, nd-router-advert, redirect } accept
 
-        # Accept IPv6 TCP traffic on port 15001
+        # Accept IPv6 TCP traffic on port 15001, 15002
         ip6 nexthdr tcp tcp dport 15001 accept
+        ip6 nexthdr tcp tcp dport 15002 accept
 
         # Accept traffic on lo and eth interfaces
         iif "lo" accept
         iif "eth0" accept
         iif "eth1" accept
-        iif "wlp1s0" accept
 
         # Allow SSH traffic
         tcp dport 22 accept

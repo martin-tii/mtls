@@ -71,9 +71,9 @@ def main():
     in_queue_lower = queue.Queue()
     out_queue_lower = queue.Queue()
     lower_batman_setup_event = threading.Event() # Event that notifies that lower macsec and bat0 has been setup
+    apply_nft_rules(rules_file='/root/mtls/socket/python3/tools/firewall.nft') # Apply firewall rules
     mua_lower = mutAuth(in_queue_lower, out_queue_lower, level="lower", meshiface="wlp1s0", port=15001, batman_interface="bat0", shutdown_event=shutdown_event, batman_setup_event=lower_batman_setup_event)
     start_up(mua_lower)
-    apply_nft_rules(rules_file='/root/mtls/socket/python3/tools/firewall.nft')
     mutual_authentication_lower(mua_lower, in_queue_lower)
 
     # Wait till lower batman is set to start mutauth for upper macsec
