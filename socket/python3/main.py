@@ -13,14 +13,21 @@ def start_up(mua):
     mua.check_mesh()
 
 def mutual_authentication_lower(mua, in_queue):
+    # Wait for wireless interface to be pingable before starting mtls server, multicast
+    wait_for_interface_to_be_pingable(mua.meshiface, mua.ipAddress)
     # Start server to facilitate client auth requests, monitor ongoing auths and start client request if there is a new peer/ server baecon
     auth_server_thread, auth_server = mua.start_auth_server()
     # Start monitoring wpa for new peer connection
     wpa_ctrl_instance = WPAMonitor(mua.wpa_supplicant_ctrl_path)
     wpa_thread = threading.Thread(target=wpa_ctrl_instance.start_monitoring, args=(in_queue,))
+    # Start multicast receiver that listens to multicasts from other mesh nodes
+    receiver_thread = threading.Thread(target=mua.multicast_handler.receive_multicast)
     monitor_thread = threading.Thread(target=mua.monitor_wpa_multicast)
     wpa_thread.start()
+    receiver_thread.start()
     monitor_thread.start()
+    # Send periodic multicasts
+    mua.sender_thread.start()
 
 def mutual_authentication_upper(mua, in_queue):
     # Wait for bat0 to be pingable before starting mtls server, multicast

@@ -71,7 +71,7 @@ class mutAuth():
                 handle_peer_connected_thread = threading.Thread(target=self.handle_wpa_multicast_event, args=(message,))
                 handle_peer_connected_thread.start()
             elif source == "MULTICAST":
-                self.logger.info(f"Received MAC on multicast: {message}")
+                self.logger.info(f"Received MAC on multicast: {message} at interface {self.meshiface}")
                 handle_peer_connected_thread = threading.Thread(target=self.handle_wpa_multicast_event, args=(message,))
                 handle_peer_connected_thread.start()
 

@@ -27,9 +27,9 @@ class Macsec:
             subprocess.run(["ip", "macsec", "add", macsec_interface, "tx", "sa", "0", "pn", "1", "on", "key", "01", my_macsec_key], check=True)
             subprocess.run(["ip", "link", "set", macsec_interface, "up"], check=True)
             subprocess.run(["ip", "macsec", "show"], check=True)
-            self.logger.info(f'Macsec tx channel set with {client_mac}')
+            self.logger.info(f'{self.level} macsec tx channel set with {client_mac}')
         except Exception as e:
-            self.logger.error(f'Error setting up macsec tx channel: {e}')
+            self.logger.error(f'Error setting up {self.level} macsec tx channel with {client_mac}: {e}')
             sys.exit(1)
 
     def set_macsec_rx(self, client_mac, client_macsec_key, client_port):
@@ -39,9 +39,9 @@ class Macsec:
             subprocess.run(["ip", "macsec", "add", macsec_interface, "rx", "port", str(client_port), "address", client_mac], check=True)
             subprocess.run(["ip", "macsec", "add", macsec_interface, "rx", "port", str(client_port), "address", client_mac, "sa", "0", "pn", "1", "on", "key", client_mac.replace(":", ""), client_macsec_key], check=True)
             subprocess.run(["ip", "macsec", "show"], check=True)
-            self.logger.info(f'Macsec rx channel set with {client_mac}')
+            self.logger.info(f'{self.level} macsec rx channel set with {client_mac}')
         except Exception as e:
-            self.logger.error(f'Error setting up macsec with {client_mac}: {e}')
+            self.logger.error(f'Error setting up {self.level} macsec rx channel with {client_mac}: {e}')
 
     def get_macsec_interface_name(self, client_mac):
         if self.level == "lower":
