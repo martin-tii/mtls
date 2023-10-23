@@ -59,19 +59,12 @@ class AuthClient:
         try:
             result = self.connection(self.secure_client_socket)
             if result['authenticated']:
-                with self.mua.connected_peers_status_lock:
-                    self.mua.connected_peers_status[self.server_mac][0] = "authenticated" # Update status as authenticated, num of failed attempts = same as before
-                self.mua.setup_macsec(secure_client_socket=self.secure_client_socket, client_mac=self.server_mac)
+                self.mua.auth_pass(secure_client_socket=self.secure_client_socket, client_mac=self.server_mac)
             else:
-                with self.mua.connected_peers_status_lock:
-                    self.mua.connected_peers_status[self.server_mac][1] = self.mua.connected_peers_status[self.server_mac][1] + 1 # Increment number of failed attempt by 1
-                    self.mua.connected_peers_status[self.server_mac][0] = "not connected"  # Update status as not connected
-            return result
+                self.mua.auth_fail(client_mac=self.server_mac)
         except Exception as e:
             self.logger.error("Define better this exception.", exc_info=True)
-            with self.mua.connected_peers_status_lock:
-                self.mua.connected_peers_status[self.server_mac][1] = self.mua.connected_peers_status[self.server_mac][1] + 1  # Increment number of failed attempt by 1
-                self.mua.connected_peers_status[self.server_mac][0] = "not connected"  # Update status as not connected
+            self.mua.auth_fail(client_mac=self.server_mac)
         # finally:
         #     # Close the socket
         #     secureClientSocket.close()

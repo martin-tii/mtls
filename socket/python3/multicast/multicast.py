@@ -20,7 +20,7 @@ class MulticastHandler:
         self.port = port
         self.interface = interface # Multicast interface. Set as wlp1s0: in case of TLS for lower macsec, bat0: in case of TLS for upper macsec
         self.logger = self._setup_logger()
-        self.excluded = [get_mac_addr("wlp1s0"), get_mac_addr("wlp1s0") + '_server']
+        self.excluded = [get_mac_addr(interface), f'{get_mac_addr(interface)}_server']
 
     def _setup_logger(self):
         logger_instance = CustomLogger("multicast")
@@ -28,7 +28,7 @@ class MulticastHandler:
 
     def send_multicast_message(self, data):
         with socket.socket(socket.AF_INET6, socket.SOCK_DGRAM) as sock:
-            sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_HOPS, 1) #TODO: check if this need to be removed for bat0 (we want multicast to reach multi-hop nodes too)
+            sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_HOPS, 1) #TODO: check if multi-hop nodes receive multicast over bat0
             sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_IF, socket.if_nametoindex(self.interface)) # Set multicast interface
 
             message = {
@@ -70,7 +70,7 @@ class MulticastHandler:
                 data, address = sock.recvfrom(1024)
                 decoded_data = json.loads(data.decode())
                 if decoded_data['mac_address'] not in self.excluded:
-                    self.logger.info(f'Received data {decoded_data} from {address}')
+                    self.logger.info(f'Received data {decoded_data} from {address} at interface {self.interface}')
                     if 'mac_address' in decoded_data:
                         self.queue.put(("MULTICAST", decoded_data['mac_address']))
 

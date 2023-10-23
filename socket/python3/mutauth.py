@@ -17,27 +17,20 @@ TIMEOUT = 3 * BEACON_TIME
 
 
 class mutAuth():
-    def __init__(self, in_queue, out_queue, level, meshiface, port, batman_interface, shutdown_event, batman_setup_event):
+    def __init__(self, in_queue, level, meshiface, port, batman_interface, shutdown_event, batman_setup_event):
         self.level = level
         self.meshiface = meshiface
         self.mymac = get_mac_addr(self.meshiface)
         self.ipAddress = mac_to_ipv6(self.mymac)
         self.port = port
         self.CERT_PATH = 'cert_generation/certificates'  # Change this to the actual path of your certificates
-        self.server = False
-        self.server_event = threading.Event()
         self.wpa_supplicant_ctrl_path = f"/var/run/wpa_supplicant/{self.meshiface}"
-        self.message_received = False
         self.in_queue = in_queue
-        self.out_queue = out_queue
         self.logger = self._setup_logger()
         self.multicast_handler = MulticastHandler(self.in_queue, MULTICAST_ADDRESS, self.port, self.meshiface)
         self.stop_event = threading.Event()
         self.sender_thread = threading.Thread(target=self._periodic_sender, args=(self.stop_event,))
         self.shutdown_event = shutdown_event  # Add this to handle graceful shutdown
-        self.macs_in_queue = set()  # A set to keep track of MACs in the queue.
-        self.server_lock = threading.Lock()  # Lock for thread-safe access to `self.server`
-        self.is_server_running = False  # Initial value
         if self.level == "lower":
             self.macsec_obj = macsec.Macsec(level=self.level, interface=self.meshiface, macsec_encryption="off")  # Initialize lower macsec object
         elif self.level == "upper":
@@ -61,34 +54,6 @@ class mutAuth():
         else:
             logger.info("wpa_supplicant process is running.")
 
-    @staticmethod
-    def set_firewall():
-        apply_nft_rules()
-
-    def _setup_server_event(self):
-        with self.server_lock:
-            self.logger.info("Setting server_event")
-            self.server_event.set()
-            self.is_server_running = True
-            self.server = True  # Explicitly set this too
-
-    def _clear_server_event(self):
-        with self.server_lock:
-            self.logger.info("Clearing server_event")
-            self.server_event.clear()
-            self.is_server_running = False
-            self.server = False  # Explicitly clear this too
-
-    """
-    def _periodic_sender(self, stop_event):
-        while not stop_event.is_set() and not self.shutdown_event.is_set():
-            if self.server:
-                self.multicast_handler.send_multicast_message(f"{self.mymac}")
-                self._setup_server_event()  # Use the centralized method
-            else:
-                self.multicast_handler.send_multicast_message(self.mymac)
-            time.sleep(BEACON_TIME)
-    """
     def _periodic_sender(self, stop_event):
         while not stop_event.is_set() and not self.shutdown_event.is_set():
             self.multicast_handler.send_multicast_message(self.mymac)
@@ -134,67 +99,6 @@ class mutAuth():
                     self.connected_peers_status[mac][0] = "ongoing"  # Update status as ongoing, num of failed attempts = same as before
                 self.start_auth_client(mac)
 
-
-    """
-    def multicast_message(self):
-        CHECK_INTERVAL = 0.1  # Check every 0.1 seconds for a new message
-        last_received = time.time()
-        stop_sender_event = threading.Event()
-        muthread = threading.Thread(target=self.multicast_handler.receive_multicast)
-        muthread.start()
-
-        while not self.shutdown_event.is_set():  # We'll check for the shutdown signal here
-            try:
-                source, message = self.in_queue.get(timeout=TIMEOUT)
-                if message.endswith("_server"):
-                    # This is a server beacon. Reset the timeout and don't attempt to become a server.
-                    self.server = False
-                    last_received = time.time()
-                elif message == self.mymac:
-                    continue
-                if source == "MULTICAST":
-                    self.logger.info(f"Received MAC on multicast: {message}")
-                    last_received = time.time()
-                elif source == "WPA":
-                    self.logger.info("External node_connect event triggered!")
-                    self.logger.info(f"Received MAC from WPA event: {message}")
-                    self.multicast_handler.send_multicast_message(self.mymac)
-                    last_received = time.time()  # update the last_received time here as well
-
-                # Check if the MAC is already in the queue
-                if message not in self.macs_in_queue:
-                    self.out_queue.put((source, message))
-                    self.macs_in_queue.add(message)
-
-            except queue.Empty:  # <-- Timeout event
-                if time.time() - last_received > TIMEOUT and not self.server:
-                    self.logger.info(f"No message received for {TIMEOUT} seconds. Contemplating becoming a server...")
-                    random_wait = random.uniform(0.5,
-                                                 3)  # Wait between 0.5 to 3 seconds. Random waiting to avoid race condition
-
-                    end_time = time.time() + random_wait
-                    while time.time() < end_time:
-                        try:
-                            source, message = self.in_queue.get(timeout=CHECK_INTERVAL)
-                            if message != self.mymac:
-                                last_received = time.time()  # update the last_received time
-                                # Check if the MAC is already in the queue
-                                if message not in self.macs_in_queue:
-                                    self.out_queue.put((source, message))
-                                    self.macs_in_queue.add(message)
-                                break  # break out of the waiting loop
-                        except queue.Empty:
-                            continue
-                    if time.time() - last_received > TIMEOUT and not self.is_server_running:
-                        try:
-                            self.logger.info("Attempting to become a server.")
-                            sender_thread = threading.Thread(target=self._periodic_sender, args=(stop_sender_event,))
-                            sender_thread.start()
-                            self._setup_server_event()  # Use the centralized method
-                            self.logger.info("Successfully became a server.")
-                        except Exception as e:
-                            self.logger.error(f"Failed to become a server. Error: {e}")
-    """
     def start_auth_server(self):
         auth_server = AuthServer(self.meshiface, self.ipAddress, self.port, self.CERT_PATH, self)
         auth_server_thread = threading.Thread(target=auth_server.start_server)
@@ -203,13 +107,19 @@ class mutAuth():
 
     def start_auth_client(self, server_mac):
         cli = AuthClient(self.meshiface, server_mac, self.port, self.CERT_PATH, self)
-        cli.establish_connection()  # TODO: check if secchan should be established only if server certificate is verified
-        #self.setup_macsec(secure_client_socket=cli.secure_client_socket, client_mac=server_mac)
+        cli.establish_connection()
 
-    """
-    def start_auth_client(self, ServerIP):
-        return AuthClient(ServerIP, self.port, self.CERT_PATH)
-    """
+    def auth_pass(self, secure_client_socket, client_mac):
+        # Steps to execute if auth passes
+        with self.connected_peers_status_lock:
+            self.connected_peers_status[client_mac][0] = "authenticated"  # Update status as authenticated, num of failed attempts = same as before
+        self.setup_macsec(secure_client_socket=secure_client_socket, client_mac=client_mac)
+
+    def auth_fail(self, client_mac):
+        # Steps to execute if auth fails
+        with self.connected_peers_status_lock:
+            self.connected_peers_status[client_mac][1] = self.connected_peers_status[client_mac][1] + 1  # Increment number of failed attempt by 1
+            self.connected_peers_status[client_mac][0] = "not connected"  # Update status as not connected
     def batman(self, batman_interface):
         try:
             batman_exec(batman_interface,"batman-adv")
@@ -217,7 +127,8 @@ class mutAuth():
             logger.error(f'Error setting up bat0: {e}')
             sys.exit(1)
 
-    def setup_secchannel(self, secure_client_socket, my_macsec_param):
+    @staticmethod
+    def setup_secchannel(secure_client_socket, my_macsec_param):
         # Establish secure channel and exchange macsec key
         secchan = SecMessageHandler(secure_client_socket)
         macsec_param_q = queue.Queue()  # queue to store macsec parameters: macsec_key, port from client_secchan.receive_message
@@ -245,6 +156,9 @@ class mutAuth():
 
         self.macsec_obj.set_macsec_tx(client_mac, my_macsec_key, my_port) # setup macsec tx channel
         self.macsec_obj.set_macsec_rx(client_mac, client_macsec_key, client_macsec_param['port'])  # setup macsec rx channel
+        self.setup_batman(client_mac)
+
+    def setup_batman(self, client_mac):
         if self.level == "lower":
             # Add lower macsec interface to lower batman interface
             add_interface_to_batman(interface_to_add=self.macsec_obj.get_macsec_interface_name(client_mac), batman_interface=self.batman_interface)
@@ -263,7 +177,7 @@ class mutAuth():
             # Set batman setup event to signal that batman has been setup
             # Used to trigger mtls for upper macsec
             self.batman_setup_event.set()
-    """
+
     def start(self):
         # ... other starting procedures
         self.sender_thread.start()
@@ -272,4 +186,3 @@ class mutAuth():
         # Use this method to stop the periodic sender and other threads
         self.stop_event.set()
         self.sender_thread.join()
-    """

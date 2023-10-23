@@ -295,7 +295,7 @@ def wait_for_interface_to_be_pingable(interface_name, ipv6_address):
 def is_interface_up(interface_name):
     # Check if interface is up
     try:
-        output = subprocess.check_output(['ifconfig', interface_name])
+        output = subprocess.check_output(['ifconfig', interface_name], stderr=subprocess.DEVNULL) # Error suppressed as the command throws an error when inyterface is not present
         return 'inet' in output.decode()
     except subprocess.CalledProcessError:
         return False
