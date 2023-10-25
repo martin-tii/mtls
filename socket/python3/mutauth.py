@@ -14,7 +14,7 @@ BEACON_TIME = 10
 MAX_CONSECUTIVE_NOT_RECEIVED = 2
 MULTICAST_ADDRESS = 'ff02::1'
 TIMEOUT = 3 * BEACON_TIME
-
+BRIDGE = False # TODO: During migration to mesh_com, get it from /opt/mesh.conf
 
 class mutAuth():
     def __init__(self, in_queue, level, meshiface, port, batman_interface, shutdown_event, batman_setup_event):
@@ -173,10 +173,27 @@ class mutAuth():
             add_interface_to_batman(interface_to_add=bridge_interface, batman_interface=self.batman_interface)
         if not is_interface_up(self.batman_interface): # Turn batman interface up if not up already
             self.batman(self.batman_interface)
+            if self.level == "upper" and BRIDGE:
+                # Add bat1 and ethernet interface to br-lan to connect external devices
+                bridge_interface = "br-lan"
+                if not is_interface_up(bridge_interface):
+                    self.setup_bridge_over_batman(bridge_interface)
         if not self.batman_setup_event.is_set():
             # Set batman setup event to signal that batman has been setup
             # Used to trigger mtls for upper macsec
             self.batman_setup_event.set()
+
+    def setup_bridge_over_batman(self, bridge_interface):
+        # TODO: Need to make it compatible with bridge_settings in mesh_com (This is just for quick test)
+        subprocess.run(["brctl", "addbr", bridge_interface], check=True)
+        add_interface_to_bridge(interface_to_add=self.batman_interface, bridge_interface=bridge_interface) # Add bat1 to br-lan
+        add_interface_to_bridge(interface_to_add="eth1", bridge_interface=bridge_interface)  # Add eth1 to br-lan
+        logger.info(f"Setting mac address of {bridge_interface} to be same as {self.batman_interface}..")
+        subprocess.run(["ip", "link", "set", "dev", bridge_interface, "address", get_mac_addr(self.batman_interface)], check=True)
+        subprocess.run(["ip", "link", "set", bridge_interface, "up"], check=True)
+        subprocess.run(["ifconfig", bridge_interface], check=True)
+
+
 
     def start(self):
         # ... other starting procedures
