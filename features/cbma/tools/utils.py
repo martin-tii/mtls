@@ -8,11 +8,11 @@ import queue
 import socket
 import ipaddress
 from .custom_logger import CustomLogger
-sys.path.insert(0, '../')
+#sys.path.insert(0, '../')
+path_to_tools_dir = os.path.dirname(__file__) # Path to dir containing this script
 
 logger_instance = CustomLogger("utils")
 logger = logger_instance.get_logger()
-script_dir = os.path.dirname(__file__) # path to tools directory
 
 class UniqueQueue:
     def __init__(self):
@@ -54,7 +54,7 @@ def run_wpa_supplicant(wifidev):
     '''
     conf_file = "/var/run/wpa_supplicant-11s.conf"
     log_file = "/tmp/wpa_supplicant_11s.log"
-    shutil.copy("tools/wpa_supplicant-11s.conf", conf_file) # this is only for testing
+    shutil.copy(f'{path_to_tools_dir}/wpa_supplicant-11s.conf', conf_file) # TODO: change in mesh_com, this is only for testing
 
     # Build the command with all the arguments
     command = [
@@ -265,7 +265,7 @@ def read_conf_file(conf_file_path):
 
 def get_mesh_ipv6_from_conf_file():
     #TODO: see if this can be removed
-    conf_file_path = f'{script_dir}/../cert_generation/csr.conf'
+    conf_file_path = f'{path_to_tools_dir}/../cert_generation/csr.conf'
     config = read_conf_file(conf_file_path)
     return config.get('alt_names', 'IP.1') # IP.1 = ipv6 derived from wlp1s0 MAC address i.e. batman MAC address, this can be changed to IP.2 if we want to use some other manually derived ip
 

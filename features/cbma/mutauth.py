@@ -1,10 +1,15 @@
+import os
+import sys
+path_to_cbma_dir = os.path.dirname(__file__) # Path to dir containing this script
+sys.path.insert(0, path_to_cbma_dir)
+
 from auth.authServer import AuthServer
 from auth.authClient import AuthClient
 import threading
 from multicast.multicast import MulticastHandler
 from tools.monitoring_wpa import *
-from tools.custom_logger import CustomLogger
 from tools.utils import *
+from tools.custom_logger import CustomLogger
 from macsec import macsec
 import queue
 import random
@@ -15,6 +20,7 @@ MAX_CONSECUTIVE_NOT_RECEIVED = 2
 MULTICAST_ADDRESS = 'ff02::1'
 TIMEOUT = 3 * BEACON_TIME
 BRIDGE = False # TODO: During migration to mesh_com, get it from /opt/mesh.conf
+logger_instance = CustomLogger("mutAuth")
 
 class mutAuth():
     def __init__(self, in_queue, level, meshiface, port, batman_interface, shutdown_event, batman_setup_event):
@@ -23,10 +29,10 @@ class mutAuth():
         self.mymac = get_mac_addr(self.meshiface)
         self.ipAddress = mac_to_ipv6(self.mymac)
         self.port = port
-        self.CERT_PATH = 'cert_generation/certificates'  # Change this to the actual path of your certificates
+        self.CERT_PATH = f'{path_to_cbma_dir}/cert_generation/certificates'  # Change this to the actual path of your certificates
         self.wpa_supplicant_ctrl_path = f"/var/run/wpa_supplicant/{self.meshiface}"
         self.in_queue = in_queue
-        self.logger = self._setup_logger()
+        self.logger = logger_instance.get_logger()
         self.multicast_handler = MulticastHandler(self.in_queue, MULTICAST_ADDRESS, self.port, self.meshiface)
         self.stop_event = threading.Event()
         self.sender_thread = threading.Thread(target=self._periodic_sender, args=(self.stop_event,))
@@ -40,11 +46,6 @@ class mutAuth():
         self.maximum_num_failed_attempts = 3 # Maximum number of failed attempts for mutual authentication (can be changed)
         self.batman_interface = batman_interface
         self.batman_setup_event = batman_setup_event
-
-    @staticmethod
-    def _setup_logger():
-        logger_instance = CustomLogger("mutAuth")
-        return logger_instance.get_logger()
 
     def check_mesh(self):
         if not is_wpa_supplicant_running():

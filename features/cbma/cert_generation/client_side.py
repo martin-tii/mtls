@@ -75,7 +75,7 @@ def main():
         client_socket.send(message)
 
         # This will allow the server some time to process and send the files. You can adjust the sleep time if needed.
-        time.sleep(5)
+        time.sleep(10)
 
         if are_files_received(csr_filename):
             print(f"The crt file ({crt}) and the ca.crt have been successfully received locally!")
