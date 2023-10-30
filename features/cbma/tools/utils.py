@@ -14,25 +14,6 @@ path_to_tools_dir = os.path.dirname(__file__) # Path to dir containing this scri
 logger_instance = CustomLogger("utils")
 logger = logger_instance.get_logger()
 
-class UniqueQueue:
-    def __init__(self):
-        self._queue = queue.Queue()
-        self._seen = set()
-
-    def put(self, item):
-        if item not in self._seen:
-            self._queue.put(item)
-            self._seen.add(item)
-
-    def get(self, *args, **kwargs):
-        item = self._queue.get(*args, **kwargs)
-        self._seen.remove(item)
-        return item
-
-    def empty(self):
-        return self._queue.empty()
-
-
 def is_wpa_supplicant_running():
     try:
         # Running the command and decoding the output
@@ -246,28 +227,8 @@ def is_ipv6(ip):
     except socket.error:
         return False
 
-def generate_session_key():
-    # TODO: check if this can be removed
-    rand = os.urandom(32)
-    #return int.from_bytes(rand, 'big')
-    return rand.hex()
-
 def generate_random_bytes(byte_size=32):
     return os.urandom(byte_size)
-
-def read_conf_file(conf_file_path):
-    # TODO: see if this can be removed
-    # Create a configparser object
-    config = configparser.ConfigParser()
-    # Read the configuration file
-    config.read(conf_file_path)
-    return config
-
-def get_mesh_ipv6_from_conf_file():
-    #TODO: see if this can be removed
-    conf_file_path = f'{path_to_tools_dir}/../cert_generation/csr.conf'
-    config = read_conf_file(conf_file_path)
-    return config.get('alt_names', 'IP.1') # IP.1 = ipv6 derived from wlp1s0 MAC address i.e. batman MAC address, this can be changed to IP.2 if we want to use some other manually derived ip
 
 def is_interface_pingable(interface_name, ip_address):
     # Return true if pingable
@@ -300,7 +261,19 @@ def is_interface_up(interface_name):
     except subprocess.CalledProcessError:
         return False
 
-def xor_bytes(byte1, byte2):
+def xor_bytes(byte1, byte2, byte_size=32):
+    # Trim the bytes if they are longer than byte_size
+    if len(byte1) > byte_size:
+        byte1 = byte1[:byte_size]
+    if len(byte2) > byte_size:
+        byte2 = byte2[:byte_size]
+
+    # Pad bytes to the required length
+    if len(byte1) < byte_size:
+        byte1 = byte1.rjust(byte_size, b'\x00')
+    if len(byte2) < byte_size:
+        byte2 = byte2.rjust(byte_size, b'\x00')
+
     # Return bit-wise XOR of byte1 and byte2
     return bytes(a ^ b for a, b in zip(byte1, byte2))
 
