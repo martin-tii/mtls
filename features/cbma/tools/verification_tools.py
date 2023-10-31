@@ -67,19 +67,21 @@ def validation(cert, ca_cert, IPaddress, logging):
         logging.error(f"Client certificate not yet active for {IPaddress}.", exc_info=True)
         raise CertificateExpiredError("Client certificate not yet active")
 
+    # Extract the actual ID from CN
+    common_name = x509.get_subject().CN
+    if common_name != extract_mac_from_ipv6(IPaddress):
+        logging.error(f"CN does not match the MAC Address for {IPaddress}", exc_info=True)
+        raise CertificateDifferentCN("CN does not match the MAC Address.")
+
     if _verify_certificate_chain(cert, ca_cert, logging):
         # Extract the public key from the certificate
         pub_key_der = OpenSSL.crypto.dump_publickey(OpenSSL.crypto.FILETYPE_ASN1, x509.get_pubkey())
+        # If the client certificate has passed all verifications, you can print or log a success message
+        logging.info(f"Certificate verification successful for {IPaddress}.")
+        return True
 
-        # Extract the actual ID from CN
-        common_name = x509.get_subject().CN
-        if common_name != extract_mac_from_ipv6(IPaddress):
-            logging.error(f"CN does not match the MAC Address for {IPaddress}", exc_info=True)
-            raise CertificateDifferentCN("CN does not match the MAC Address.")
-
-    # If the client certificate has passed all verifications, you can print or log a success message
-    logging.info(f"Certificate verification successful for {IPaddress}.")
-    return True
+    else:
+        raise CertificateVerificationError("Verification of certificate chain failed.")
 
 
 def _verify_certificate_chain(cert, trusted_certs, logging):

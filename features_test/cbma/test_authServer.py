@@ -6,7 +6,7 @@ import socket
 import ssl
 import threading
 
-import add_syspath  # Assuming this module adjusts sys.path for imports
+import add_syspath
 from auth.authServer import AuthServer
 
 class MockLogger:
