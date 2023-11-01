@@ -94,3 +94,14 @@ def test_certificate_expired(mock_load_certificate):
     with pytest.raises(CertificateExpiredError): # Checking that exception is raised
         validation(cert, ca_cert, IPaddress, mock.Mock())
     assert not verify_cert(cert, ca_cert, IPaddress, mock.Mock()) # Assert that certificate verification fails
+
+# Remove log directory during teardown
+import shutil
+import os
+def remove_logs_directory():
+    logs_directory = 'logs'
+    if os.path.exists(logs_directory) and os.path.isdir(logs_directory):
+        shutil.rmtree(logs_directory)
+
+def teardown_module():
+    remove_logs_directory()
