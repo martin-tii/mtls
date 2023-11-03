@@ -1,12 +1,9 @@
-import signal
-import threading
-from mutauth import mutAuth
-from tools.monitoring_wpa import WPAMonitor
-from tools.utils import *
-from secure_channel.secchannel import SecMessageHandler
-from macsec import macsec
+from features.cbma.mutauth import *
+from features.cbma.tools.monitoring_wpa import WPAMonitor
+
 shutdown_event = threading.Event()
 
+file_dir = os.path.dirname(__file__) # Path to dir containing this script
 
 def start_up(mua):
     # Sets up wlp1s0 interface
@@ -45,7 +42,7 @@ def mutual_authentication_upper(mua, in_queue):
 def main():
     in_queue_lower = queue.Queue() # Queue to store wpa peer connected messages for wlp1s0
     lower_batman_setup_event = threading.Event() # Event that notifies that lower macsec and bat0 has been setup
-    apply_nft_rules(rules_file='/root/mtls/socket/python3/tools/firewall.nft') # Apply firewall rules
+    apply_nft_rules(rules_file=f'{file_dir}/features/cbma/tools/firewall.nft') # Apply firewall rules
     mua_lower = mutAuth(in_queue_lower, level="lower", meshiface="wlp1s0", port=15001, batman_interface="bat0", shutdown_event=shutdown_event, batman_setup_event=lower_batman_setup_event)
     start_up(mua_lower)
     mutual_authentication_lower(mua_lower, in_queue_lower)

@@ -10,7 +10,7 @@ sys.path.insert(0, '../')
 from tools.utils import get_mac_addr
 from tools.custom_logger import CustomLogger
 
-
+logger_instance = CustomLogger("multicast")
 
 
 class MulticastHandler:
@@ -19,12 +19,8 @@ class MulticastHandler:
         self.multicast_group = multicast_group
         self.port = port
         self.interface = interface # Multicast interface. Set as wlp1s0: in case of TLS for lower macsec, bat0: in case of TLS for upper macsec
-        self.logger = self._setup_logger()
+        self.logger = logger_instance.get_logger()
         self.excluded = [get_mac_addr(interface), f'{get_mac_addr(interface)}_server']
-
-    def _setup_logger(self):
-        logger_instance = CustomLogger("multicast")
-        return logger_instance.get_logger()
 
     def send_multicast_message(self, data):
         with socket.socket(socket.AF_INET6, socket.SOCK_DGRAM) as sock:

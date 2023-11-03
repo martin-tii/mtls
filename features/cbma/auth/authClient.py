@@ -13,6 +13,7 @@ MAX_RETRIES = 5
 MIN_WAIT_TIME = 1  # seconds
 MAX_WAIT_TIME = 3  # seconds
 
+logger_instance = CustomLogger("authClient")
 
 
 
@@ -23,16 +24,11 @@ class AuthClient:
         self.CERT_PATH = cert_path
         self.interface = interface
         self.secure_client_socket = None
-        self.logger = self._setup_logger()
+        self.logger = logger_instance.get_logger()
         self.ca = f'{self.CERT_PATH}/ca.crt'
         self.mymac = get_mac_addr(self.interface)
         self.server_mac = server_mac
         self.mua = mua
-
-    @staticmethod
-    def _setup_logger():
-        logger_instance = CustomLogger("authClient")
-        return logger_instance.get_logger()
 
     def establish_connection(self):
         # Create an SSL context
